@@ -1,6 +1,6 @@
-# Random HTML Wallpaper
+# Randamu
 
-A simple python script to serve a website with random images.
+A simple python script to serve a webpage with random images, which can be used as wallpaper.
 
 ## Supported Services
 
@@ -11,7 +11,7 @@ A simple python script to serve a website with random images.
 - Clone the repository
 
     ```bash
-    git clone https://github.com/MaikoTan/random-html-wallpaper.git
+    git clone https://github.com/MaikoTan/randamu.git
     ```
 
 - Create virtual environment
@@ -38,5 +38,6 @@ A simple python script to serve a website with random images.
 - Run the script
 
     ```bash
-    uvicorn main:app --reload --port 8089 --host 0.0.0.0
+    uvicorn main:app --reload --port 8089
+    # You could add `--host 0.0.0.0` to allow all IP addresses instead of `localhost`.
     ```
