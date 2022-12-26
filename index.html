@@ -11,39 +11,62 @@
         padding: 0;
         box-sizing: border-box;
       }
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
       #bg {
         width: 100vw;
         height: 100vh;
         background-size: cover;
-        background-position: top center;
+        background-position: center;
+        background-repeat: no-repeat;
+        filter: blur(10px);
+      }
+      #fg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-size: contain;
+        background-position: center;
         background-repeat: no-repeat;
         transition: background-image 0.5s ease-in-out;
       }
     </style>
+    <link rel="stylesheet" href="/user.css">
   </head>
   <body>
     <div id="bg"></div>
+    <div id="fg"></div>
     <script>
-      var nextBg = ''
-      var nextClass = 'bg1'
-      var bg = document.getElementById('bg')
-      function getBg() {
-        return fetch(`/api${window.location.search}`, { mode: 'no-cors' })
-          .then(res => res.json())
-          .then(r => {
-            nextBg = r.url
-            // preload image
-            new Image().src = r.url
-          })
-      }
-
-      function setBg() {
-        bg.style.backgroundImage = `url(${nextBg})`
-        getBg()
-        setTimeout(setBg, 30 * 1000)
-      }
-
-      getBg().then(setBg)
+      ;(function () {
+        var nextBg = ''
+        var nextClass = 'bg1'
+        var bg = document.getElementById('bg')
+        var fg = document.getElementById('fg')
+        var currentTimer = null
+        function getBg() {
+          return fetch(`/api/image${window.location.search}`, { mode: 'no-cors' })
+            .then(res => res.json())
+            .then(r => {
+              nextBg = r.url
+              // preload image
+              new Image().src = r.url
+            })
+        }
+  
+        function setBg() {
+          bg.style.backgroundImage = `url(${nextBg})`
+          fg.style.backgroundImage = `url(${nextBg})`
+          getBg()
+          currentTimer = setTimeout(setBg, 30 * 1000)
+        }
+  
+        getBg().then(setBg)
+      })()
     </script>
   </body>
 </html>

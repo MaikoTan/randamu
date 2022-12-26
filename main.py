@@ -27,3 +27,10 @@ def main(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=None, 
 @app.get("/")
 async def read_index():
     return FileResponse('index.html')
+
+@app.get("/user.css")
+async def read_user_css():
+    if os.path.exists("user.css"):
+        return FileResponse("user.css")
+    else:
+        return ""
