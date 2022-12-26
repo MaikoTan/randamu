@@ -1,3 +1,5 @@
 requests
 fastapi
 uvicorn
+pixivpy-async[socks]
+aiohttp_socks

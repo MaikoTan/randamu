@@ -3,4 +3,5 @@ images/
 venv/
 env/
 
+config.json
 user.*

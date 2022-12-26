@@ -49,7 +49,7 @@
         var fg = document.getElementById('fg')
         var currentTimer = null
         function getBg() {
-          return fetch(`/api/image/lolicon${window.location.search}`, { mode: 'no-cors' })
+          return fetch(`/api/image/pixiv${window.location.search}`, { mode: 'no-cors' })
             .then(res => res.json())
             .then(r => {
               nextBg = r.url
