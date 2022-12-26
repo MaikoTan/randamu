@@ -1,0 +1,44 @@
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      #bg {
+        width: 100%;
+        height: 100%;
+        background-size: cover;
+        background-position: -10px center;
+        background-repeat: no-repeat;
+        transition: background-image 0.5s ease-in-out;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bg"></div>
+    <script>
+      var nextBg = ''
+      var nextClass = 'bg1'
+      var bg = document.getElementById('bg')
+      function getBg() {
+        return fetch(`/api${window.location.search}`, { mode: 'no-cors' })
+          .then(res => res.json())
+          .then(r => {
+            nextBg = r.url
+            // preload image
+            new Image().src = r.url
+          })
+      }
+
+      function setBg() {
+        bg.style.backgroundImage = `url(${nextBg})`
+        getBg()
+        setTimeout(setBg, 30 * 1000)
+      }
+
+      getBg().then(setBg)
+    </script>
+  </body>
+</html>
