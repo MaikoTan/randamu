@@ -20,6 +20,17 @@ async def pixiv():
             await api.login_web()
         illusts = await api.illust_recommended(content_type="illust")
         for i in illusts["illusts"]:
+            # filter r18 images (based on tags)
+            if not config.get("pixiv", {}).get("r18", True):
+                tags = i.get("tags", [])
+                r18 = False
+                for t in tags:
+                    if t.get("name", "") == "R-18":
+                        r18 = True
+                        break
+                if r18:
+                    continue
+
             url = i["meta_single_page"].get("original_image_url", None)
             if url is None:
                 for j in i["meta_pages"]:
