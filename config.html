@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Config - Randamu</title>
+  </head>
+  <body>
+    <form action="/api/config" method="POST">
+      <label for="interval" aria-label="Interval">Interval</label>
+      <input type="number" name="interval" id="interval" value="30" min="1" aria-label="Interval" aria-required="true" required>
+      <p for="service">Service</p>
+      <input type="radio" name="service" id="lolicon" value="lolicon" checked aria-checked="true">
+      <label for="lolicon">Lolicon</label>
+      <input type="radio" name="service" id="pixiv" value="pixiv" checked aria-checked="true">
+      <label for="pixiv">Pixiv</label>
+
+      <button type="submit">Save</button>
+    </form>
+
+    <script>
+      ;(async function () {
+        var resp = await fetch('/api/config', { mode: 'no-cors'})
+        var json = await resp.json()
+        if (json.interval) {
+          document.querySelector('#interval').value = json.interval
+        }
+        if (json.service) {
+          document.querySelector("#service").value = json.service
+        }
+      })()
+    </script>
+  </body>
+</html>

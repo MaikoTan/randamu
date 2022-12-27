@@ -3,3 +3,4 @@ fastapi
 uvicorn
 pixivpy-async[socks]
 aiohttp_socks
+python-multipart

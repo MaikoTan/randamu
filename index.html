@@ -42,13 +42,20 @@
     <div id="bg"></div>
     <div id="fg"></div>
     <script>
-      ;(function () {
+      ;(async function () {
+        var service = 'pixiv'
+        var resp = await fetch('/api/config', { mode: 'no-cors'})
+        var json = await resp.json()
+        if (json.service) {
+          service = json.service
+        }
+
         var nextBg = ''
         var bg = document.getElementById('bg')
         var fg = document.getElementById('fg')
         var currentTimer = null
         function getBg() {
-          return fetch(`/api/image/pixiv${window.location.search}`, { mode: 'no-cors' })
+          return fetch(`/api/image/${service}`, { mode: 'no-cors' })
             .then(res => res.json())
             .then(r => {
               nextBg = r.url
@@ -61,7 +68,7 @@
           fg.style.backgroundImage = `url(${nextBg})`
           getBg().then((url) => {
             // preload image
-            new Image().src = r.url
+            new Image().src = url
           })
           currentTimer = setTimeout(setBg, 30 * 1000)
         }
