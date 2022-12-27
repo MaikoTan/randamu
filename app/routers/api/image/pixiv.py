@@ -1,7 +1,7 @@
-from asyncio import Queue
-from random import shuffle
+from asyncio import Queue, PriorityQueue
+from random import randint, shuffle
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter
 
 from pixivpy_async import AppPixivAPI
@@ -25,14 +25,31 @@ class Config:
 
 config = Config()
 
-class ShuffleQueue(Queue):
-    def get_nowait(self):
-        shuffle(self._queue)
-        return super().get_nowait()
-
-queue: Queue[Any] = ShuffleQueue()
+queue: PriorityQueue[Any] = PriorityQueue()
 
 json_result: Optional[Dict[str, Any]] = None
+
+def should_skip(tags: List[Dict[str, str]]) -> bool:
+    """filter r18 images (based on tags)
+    """
+    skip = False
+    blacklist = config.blacklist if config.blacklist else []
+    for t in tags:
+        if config.r18 == False and t.get("name", "") == "R-18":
+            skip = True
+            break
+        if len(blacklist) and t.get("name", "") in blacklist:
+            skip = True
+            break
+    return skip
+
+class PriorityEntry(object):
+    def __init__(self, priority: int, data: Any):
+        self.priority = priority
+        self.data = data
+    def __lt__(self, other):
+        return self.priority < other.priority
+
 
 @router.get("/pixiv")
 async def pixiv():
@@ -41,6 +58,7 @@ async def pixiv():
             await api.login(refresh_token=config.refresh_token)
         if api.refresh_token is None:
             await api.login_web()
+        config.refresh_token = api.refresh_token
         recommend_base_illusts = config.recommend_base_illusts
         global json_result
         next_qs = None
@@ -55,25 +73,16 @@ async def pixiv():
         for i in json_result["illusts"]:
             # filter r18 images (based on tags)
             tags = i.get("tags", [])
-            skip = False
-            blacklist = config.blacklist if config.blacklist else []
-            for t in tags:
-                if config.r18 == False and t.get("name", "") == "R-18":
-                    skip = True
-                    break
-                if len(blacklist) and t.get("name", "") in blacklist:
-                    skip = True
-                    break
-            if skip:
+            if should_skip(tags):
                 continue
 
             url = i["meta_single_page"].get("original_image_url", None)
             if url is None:
                 for j in i["meta_pages"]:
-                    queue.put_nowait({
+                    queue.put_nowait(PriorityEntry(randint(0, 100), {
                         "url": j["image_urls"]["original"].replace("i.pximg.net", "i.pixiv.re"),
                         "data": i,
-                    })
+                    }))
             else:
-                queue.put_nowait({ "url": url.replace("i.pximg.net", "i.pixiv.re"), "data": i })
-    return queue.get_nowait()
+                queue.put_nowait(PriorityEntry(randint(0, 100), { "url": url.replace("i.pximg.net", "i.pixiv.re"), "data": i }))
+    return queue.get_nowait().data

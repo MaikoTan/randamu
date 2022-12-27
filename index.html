@@ -44,7 +44,6 @@
     <script>
       ;(function () {
         var nextBg = ''
-        var nextClass = 'bg1'
         var bg = document.getElementById('bg')
         var fg = document.getElementById('fg')
         var currentTimer = null
@@ -53,15 +52,17 @@
             .then(res => res.json())
             .then(r => {
               nextBg = r.url
-              // preload image
-              new Image().src = r.url
+              return r.url
             })
         }
   
         function setBg() {
           bg.style.backgroundImage = `url(${nextBg})`
           fg.style.backgroundImage = `url(${nextBg})`
-          getBg()
+          getBg().then((url) => {
+            // preload image
+            new Image().src = r.url
+          })
           currentTimer = setTimeout(setBg, 30 * 1000)
         }
   
