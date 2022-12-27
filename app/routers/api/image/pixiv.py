@@ -62,8 +62,8 @@ async def pixiv():
         recommend_base_illusts = config.recommend_base_illusts
         global json_result
         next_qs = None
-        if json_result is not None and json_result.next_url:
-            next_qs = api.parse_qs(json_result.next_url)
+        if json_result is not None and json_result.get("next_url", None):
+            next_qs = api.parse_qs(json_result.get("next_url"))
         if next_qs is not None:
             json_result = await api.illust_recommended(**next_qs)
         if recommend_base_illusts is None:
