@@ -5,3 +5,5 @@ env/
 
 config.json
 user.*
+
+.vscode/

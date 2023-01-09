@@ -1,4 +1,4 @@
-from asyncio import Queue, PriorityQueue
+from asyncio import PriorityQueue
 from random import randint, shuffle
 import json
 from typing import Any, Dict, List, Optional
@@ -7,8 +7,6 @@ from fastapi import APIRouter
 from pixivpy_async import AppPixivAPI
 
 router = APIRouter()
-
-api = AppPixivAPI(proxy="socks5://127.0.0.1:7891")
 
 class Config:
     def __getattr__(self, name):
@@ -24,6 +22,8 @@ class Config:
             json.dump(config, f, indent=2)
 
 config = Config()
+
+api = AppPixivAPI(proxy=config.proxy)
 
 queue: PriorityQueue[Any] = PriorityQueue()
 

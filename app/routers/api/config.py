@@ -6,7 +6,7 @@ from app.models import RandamuConfig
 
 router = APIRouter()
 
-@router.get("/api/config")
+@router.get("/config")
 def config():
     if not os.path.exists("config.json"):
         with open("config.json", "w") as f:
@@ -14,7 +14,7 @@ def config():
     with open("config.json", "r") as f:
         return json.load(f)
 
-@router.post("/api/config")
+@router.post("/config")
 def set_config(data: RandamuConfig = Form()):
     with open("config.json", "w") as f:
         json.dump(data, f)

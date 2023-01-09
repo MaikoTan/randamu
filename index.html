@@ -44,10 +44,12 @@
     <script>
       ;(async function () {
         var service = 'pixiv'
+        var interval = 30
         var resp = await fetch('/api/config', { mode: 'no-cors'})
         var json = await resp.json()
         if (json.service) {
           service = json.service
+          interval = json.interval
         }
 
         var nextBg = ''
@@ -70,8 +72,15 @@
             // preload image
             new Image().src = url
           })
-          currentTimer = setTimeout(setBg, 30 * 1000)
+          currentTimer = setTimeout(setBg, interval * 1000)
         }
+
+        function next() {
+          clearTimeout(currentTimer)
+          setBg()
+        }
+
+        fg.onclick = next
   
         getBg().then(setBg)
       })()
