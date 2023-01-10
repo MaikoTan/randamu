@@ -34,13 +34,37 @@
         background-position: center;
         background-repeat: no-repeat;
         transition: background-image 0.5s ease-in-out;
+        text-decoration: none;
+        display: block;
+      }
+      #info {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 5px 10px;
+        line-height: 1.3em;
+        background: rgba(0, 0, 0, 0.5);
+        transition: background 0.5s ease-in-out;
+      }
+      #title, #author {
+        color: #fff;
+        display: block;
+        text-decoration: none;
+      }
+      #author {
+        font-size: 0.7em;
       }
     </style>
     <link rel="stylesheet" href="/user.css">
   </head>
   <body>
     <div id="bg"></div>
-    <div id="fg"></div>
+    <a id="fg" href="#"></a>
+    <div id="info">
+      <a id="title" target="_blank"></a>
+      <a id="author" target="_blank"></a>
+    </div>
     <script>
       ;(async function () {
         var service = 'pixiv'
@@ -52,7 +76,7 @@
           interval = json.interval
         }
 
-        var nextBg = ''
+        var nextBg = { url: '' }
         var bg = document.getElementById('bg')
         var fg = document.getElementById('fg')
         var currentTimer = null
@@ -60,15 +84,27 @@
           return fetch(`/api/image/${service}`, { mode: 'no-cors' })
             .then(res => res.json())
             .then(r => {
-              nextBg = r.url
-              return r.url
+              nextBg = r
+              return r
             })
         }
   
         function setBg() {
-          bg.style.backgroundImage = `url(${nextBg})`
-          fg.style.backgroundImage = `url(${nextBg})`
-          getBg().then((url) => {
+          bg.style.backgroundImage = `url(${nextBg.url})`
+          fg.style.backgroundImage = `url(${nextBg.url})`
+          var title = document.getElementById('title')
+          if (title) {
+            title.innerText = nextBg.data?.title
+            if (nextBg.data?.id)
+              title.href = `https://pixiv.net/i/${nextBg.data.id}`
+          }
+          var author = document.getElementById('author')
+          if (author) {
+            author.innerText = nextBg.data?.user?.name
+            if (nextBg.data?.user?.id)
+              author.href = `https://pixiv.net/u/${nextBg.data.user.id}`
+          }
+          getBg().then(({ url }) => {
             // preload image
             new Image().src = url
           })
