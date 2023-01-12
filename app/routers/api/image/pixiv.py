@@ -1,10 +1,12 @@
 from asyncio import PriorityQueue
-from random import randint, shuffle
+from random import randint
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 from fastapi import APIRouter
 
 from pixivpy_async import AppPixivAPI
+
+from app.models.image import Image
 
 router = APIRouter()
 
@@ -25,8 +27,6 @@ config = Config()
 
 api = AppPixivAPI(proxy=config.proxy)
 
-queue: PriorityQueue[Any] = PriorityQueue()
-
 json_result: Optional[Dict[str, Any]] = None
 
 def should_skip(tags: List[Dict[str, str]]) -> bool:
@@ -43,16 +43,29 @@ def should_skip(tags: List[Dict[str, str]]) -> bool:
             break
     return skip
 
-class PriorityEntry(object):
-    def __init__(self, priority: int, data: Any):
+T = TypeVar("T")
+class PriorityEntry(Generic[T]):
+    def __init__(self, priority: int, data: T):
         self.priority = priority
         self.data = data
     def __lt__(self, other):
         return self.priority < other.priority
 
 
-@router.get("/pixiv")
-async def pixiv():
+queue: PriorityQueue[PriorityEntry[Image]] = PriorityQueue()
+
+
+def _to_image(url: str, data: Dict[str, Any]) -> Image:
+    return Image(
+        url=url,
+        title=data["title"],
+        author=data["user"]["name"],
+        data=data,
+    )
+
+
+@router.get("/pixiv", response_model=Image)
+async def pixiv() -> Image:
     if queue.empty():
         if config.refresh_token is not None:
             await api.login(refresh_token=config.refresh_token)
@@ -79,10 +92,10 @@ async def pixiv():
             url = i["meta_single_page"].get("original_image_url", None)
             if url is None:
                 for j in i["meta_pages"]:
-                    queue.put_nowait(PriorityEntry(randint(0, 100), {
-                        "url": j["image_urls"]["original"].replace("i.pximg.net", "i.pixiv.re"),
-                        "data": i,
-                    }))
+                    queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(
+                        j["image_urls"]["original"].replace("i.pximg.net", "i.pixiv.re"),
+                        i,
+                    )))
             else:
-                queue.put_nowait(PriorityEntry(randint(0, 100), { "url": url.replace("i.pximg.net", "i.pixiv.re"), "data": i }))
+                queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url.replace("i.pximg.net", "i.pixiv.re"), i)))
     return queue.get_nowait().data

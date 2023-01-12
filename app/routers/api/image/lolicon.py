@@ -1,12 +1,14 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
 import requests
 
+from app.models.image import Image
+
 router = APIRouter()
 
-@router.get("/lolicon")
-def lolicon(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=None, dateBefore: Optional[int]=None):
+@router.get("/lolicon", response_model=Image)
+def lolicon(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=None, dateBefore: Optional[int]=None) -> Image:
     payload = {
         "r18": r18,
         "num": num,
@@ -22,4 +24,9 @@ def lolicon(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=Non
     j = r.json()
     i = j["data"][0]
     url: str = i["urls"]["original"]
-    return { "url": url }
+    return Image(
+        url=url,
+        title=i.get("title", ""),
+        author=i.get("author", ""),
+        data=i,  
+    )

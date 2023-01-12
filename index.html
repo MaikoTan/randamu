@@ -94,13 +94,13 @@
           fg.style.backgroundImage = `url(${nextBg.url})`
           var title = document.getElementById('title')
           if (title) {
-            title.innerText = nextBg.data?.title
+            title.innerText = nextBg.title
             if (nextBg.data?.id)
               title.href = `https://pixiv.net/i/${nextBg.data.id}`
           }
           var author = document.getElementById('author')
           if (author) {
-            author.innerText = nextBg.data?.user?.name
+            author.innerText = nextBg.author
             if (nextBg.data?.user?.id)
               author.href = `https://pixiv.net/u/${nextBg.data.user.id}`
           }
