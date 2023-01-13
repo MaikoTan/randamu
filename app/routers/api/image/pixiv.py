@@ -84,7 +84,7 @@ async def pixiv() -> Image:
         elif recommend_base_illusts is not None:
             json_result = await api.illust_recommended(content_type="illust", bookmark_illust_ids=recommend_base_illusts)
         elif config.tag is not None:
-            json_result = await api.search_illust(config.tag, sort="popular_desc", min_bookmarks=1000)
+            json_result = await api.search_illust(config.tag, sort="popular_desc")
         else:
             json_result = await api.illust_recommended(content_type="illust")
 
