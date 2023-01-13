@@ -74,15 +74,23 @@ async def pixiv() -> Image:
         config.refresh_token = api.refresh_token
         recommend_base_illusts = config.recommend_base_illusts
         global json_result
-        next_qs = None
-        if json_result is not None and json_result.get("next_url", None):
-            next_qs = api.parse_qs(json_result.get("next_url"))
-        if next_qs is not None:
-            json_result = await api.illust_recommended(**next_qs)
-        if recommend_base_illusts is None:
-            json_result = await api.illust_recommended(content_type="illust")
-        else:
+        next_url = config.next_url
+
+        if next_url is not None:
+            next_qs = api.parse_qs(next_url)
+            if next_qs.get("word") is None:
+                next_qs["word"] = config.tag
+            json_result = await api.search_illust(**next_qs)
+        elif recommend_base_illusts is not None:
             json_result = await api.illust_recommended(content_type="illust", bookmark_illust_ids=recommend_base_illusts)
+        elif config.tag is not None:
+            json_result = await api.search_illust(config.tag, sort="popular_desc", min_bookmarks=1000)
+        else:
+            json_result = await api.illust_recommended(content_type="illust")
+
+        if json_result is not None and json_result.get("next_url", None):
+            config.next_url = json_result.get("next_url")
+
         for i in json_result["illusts"]:
             # filter r18 images (based on tags)
             tags = i.get("tags", [])
