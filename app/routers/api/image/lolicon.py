@@ -28,5 +28,7 @@ def lolicon(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=Non
         url=url,
         title=i.get("title", ""),
         author=i.get("author", ""),
+        page_url=f'https://pixiv.net/i/{i.get("pid")}',
+        author_url=f'https://pixiv.net/u/{i.get("uid")}',
         data=i,  
     )
