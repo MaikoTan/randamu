@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "ES2021",
+    "module": "CommonJS",
+    "allowJs": true,
+    "checkJs": true,
+    "jsx": "react-jsx",
+    "types": ["react", "react-dom"]
+  }
+}
