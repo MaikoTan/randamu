@@ -60,6 +60,8 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
         url=url,
         title=data["title"],
         author=data["user"]["name"],
+        page_url=f'https://pixiv.net/i/{data.get("id")}',
+        author_url=f'https://pixiv.net/u/{data.get("user", {}).get("id")}',
         data=data,
     )
 
