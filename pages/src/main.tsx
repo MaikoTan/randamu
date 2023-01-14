@@ -54,22 +54,20 @@ function Randamu() {
   if (!bg) {
     return <div>Requesting ...</div>;
   }
-  return h("div", {}, [
-    h("div", { id: "bg", style: { backgroundImage: `url(${bg.url})` } }),
-    h("a", { id: "fg", style: { backgroundImage: `url(${bg.url})` }, href: "#" }),
-    h("div", { id: "info" }, [
-      h("a", { id: "title", href: bg.page_url ?? "#", target: "_blank" }, bg.title ?? ""),
-      h(
-        "a",
-        {
-          id: "author",
-          href: bg.author_url ?? "#",
-          target: "_blank",
-        },
-        bg.author ?? "",
-      ),
-    ]),
-  ]);
+  return (<div>
+    <div id="bg" style={{ backgroundImage: `url(${bg.url})`}} />
+    <a id="fg" style={{ backgroundImage: `url(${bg.url})` }} href="#" />
+    <div id="info">
+      <a id="title" href={ bg.page_url ?? "#" } target="_blank">{ bg.title ?? "" }</a>
+      <a
+        id="author"
+        href={ bg.author_url ?? "#" }
+        target="_blank"
+      >
+        { bg.author ?? "" }
+      </a>
+    </div>
+  </div>)
 }
 
 const root = createRoot(document.querySelector("#app"));
