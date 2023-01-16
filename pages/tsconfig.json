@@ -1,10 +1,12 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
+    "outDir": "dist",
     "target": "ES2021",
-    "module": "CommonJS",
+    "module": "ESNext",
     "allowJs": true,
     "checkJs": true,
+    "moduleResolution": "node",
     "jsx": "react-jsx",
     "types": ["react", "react-dom"]
   }

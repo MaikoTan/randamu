@@ -1,11 +1,11 @@
 {
   "name": "randamu",
   "version": "1.0.0",
-  "source": "src/index.html",
-  "main": "src/main.ts",
+  "source": "src/main.tsx",
+  "browser": "dist/main.js",
   "scripts": {
-    "start": "parcel",
-    "build": "parcel build"
+    "start": "vite",
+    "build": "vite build"
   },
   "repository": "git@github.com:MaikoTan/randamu.git",
   "author": "Maiko Tan <maiko.tan.coding@gmail.com>",
@@ -15,14 +15,13 @@
     "@types/node": "^16.7.13",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
-    "typescript": "^4.9.4"
+    "@vitejs/plugin-react": "^3.0.1",
+    "typescript": "^4.9.4",
+    "vite": "^4.0.4"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
-  "externals": {
-    "react": "React",
-    "react-dom": "ReactDOM"
-  }
+  "browserslist": "> 0.5%, last 2 versions, not dead"
 }
