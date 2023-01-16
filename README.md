@@ -4,6 +4,7 @@ A simple python script to serve a webpage with random images, which can be used 
 
 ## Supported Services
 
+- [x] [Pixiv](https://pixiv.net/) via [pixivpy_async](https://github.com/Mikubill/pixivpy-async)
 - [x] [Lolicon setu API](https://api.lolicon.app/#/setu)
 
 ## Usage
