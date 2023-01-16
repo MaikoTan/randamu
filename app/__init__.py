@@ -6,4 +6,4 @@ from app import routers
 app = FastAPI()
 
 app.include_router(routers.router)
-app.mount('/', StaticFiles(directory='pages'), name='static')
+app.mount('/', StaticFiles(directory='pages/dist'), name='static')
