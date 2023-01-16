@@ -1,0 +1,72 @@
+import { useEffect, useState } from "react";
+
+export default function Randamu() {
+  const [service, setService] = useState("pixiv");
+  const [interval, setInterval] = useState(30);
+  type Bg = Record<"title" | "url" | "page_url" | "author" | "author_url", string>;
+  const [bg, setBg] = useState<Bg>();
+  const [nextBg, setNextBg] = useState<Bg>();
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      var resp = await fetch("/api/config", { mode: "no-cors" });
+      var json = await resp.json();
+
+      setService(json.service ?? "pixiv");
+      setInterval(json.interval ?? 30);
+    };
+
+    fetchConfig().catch(console.error);
+  }, []);
+
+  async function getBg() {
+    const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
+    const r = await res.json();
+    return r;
+  }
+
+  function preload() {
+    getBg().then((r) => {
+      setNextBg(r);
+      // preload image
+      new Image().src = r.url;
+    });
+  }
+
+  useEffect(() => {
+    if (!bg) {
+      // load the first one
+      getBg().then((r) => {
+        setBg(r);
+        preload();
+      });
+    }
+  }, [service]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setBg(nextBg);
+      preload();
+    }, interval * 1000);
+
+    return () => clearTimeout(id);
+  }, [interval, nextBg]);
+
+  if (!bg) {
+    return <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>Requesting ...</div>;
+  }
+  return (
+    <>
+      <div id="bg" style={{ backgroundImage: `url(${bg.url})` }} />
+      <a id="fg" style={{ backgroundImage: `url(${bg.url})` }} href="#" />
+      <div id="info">
+        <a id="title" href={bg.page_url ?? "#"} target="_blank">
+          {bg.title ?? ""}
+        </a>
+        <a id="author" href={bg.author_url ?? "#"} target="_blank">
+          {bg.author ?? ""}
+        </a>
+      </div>
+    </>
+  );
+}
