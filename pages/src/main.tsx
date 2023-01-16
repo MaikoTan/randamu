@@ -6,6 +6,7 @@ function Randamu() {
   const [interval, setInterval] = useState(30);
   type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url', string>
   const [bg, setBg] = useState<Bg>();
+  const [nextBg, setNextBg] = useState<Bg>()
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -19,37 +20,38 @@ function Randamu() {
     fetchConfig().catch(console.error);
   }, []);
 
+  async function getBg() {
+    const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
+    const r = await res.json();
+    return r;
+  }
+
+  function preload() {
+    getBg().then((r) => {
+      setNextBg(r)
+      // preload image
+      new Image().src = r.url;
+    });
+  }
+
   useEffect(() => {
-    let currentTimer: number;
-
-    async function getBg() {
-      const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
-      const r = await res.json();
-      return r;
-    }
-
-    function preload() {
+    if (!bg) {
+      // load the first one
       getBg().then((r) => {
-        // preload image
-        new Image().src = r.url;
-        currentTimer = setTimeout(() => {
-          setBg(r);
-          preload();
-        }, interval * 1000);
+        setBg(r);
+        preload();
       });
     }
+  }, [service]);
 
-    // load the first one
-    getBg().then((r) => {
-      setBg(r);
-      preload();
-    });
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setBg(nextBg)
+      preload()
+    }, interval * 1000)
 
-    return () => {
-      clearTimeout(currentTimer);
-      currentTimer = null;
-    };
-  }, [service, interval]);
+    return () => clearTimeout(id)
+  }, [interval, nextBg])
 
   if (!bg) {
     return <div>Requesting ...</div>;
