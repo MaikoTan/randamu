@@ -7,32 +7,21 @@ from fastapi import APIRouter
 from pixivpy_async import AppPixivAPI
 
 from app.models.image import Image
+from app.config import Config
 
 router = APIRouter()
 
-class Config:
-    def __getattr__(self, name):
-        with open("config.json", "r") as f:
-            config = json.load(f)
-        return config.get("pixiv").get(name, None)
-
-    def __setattr__(self, _name: str, _value: Any) -> None:
-        with open("config.json", "r") as f:
-            config = json.load(f)
-        config["pixiv"][_name] = _value
-        with open("config.json", "w") as f:
-            json.dump(config, f, indent=2)
-
-config = Config()
-
+config = Config("pixiv")
 api = AppPixivAPI(proxy=config.proxy)
 
 json_result: Optional[Dict[str, Any]] = None
 
-def should_skip(tags: List[Dict[str, str]]) -> bool:
+def should_skip(tags: List[Dict[str, str]], data: Any) -> bool:
     """filter r18 images (based on tags)
     """
     skip = False
+    if config.excludeAI and data.get("illust_ai_type", None) == 2:
+        return True
     blacklist = config.blacklist if config.blacklist else []
     for t in tags:
         if config.r18 == False and t.get("name", "") == "R-18":
@@ -96,7 +85,7 @@ async def pixiv() -> Image:
         for i in json_result["illusts"]:
             # filter r18 images (based on tags)
             tags = i.get("tags", [])
-            if should_skip(tags):
+            if should_skip(tags, i):
                 continue
 
             url = i["meta_single_page"].get("original_image_url", None)
