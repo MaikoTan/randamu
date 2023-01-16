@@ -6,8 +6,9 @@
     "module": "ESNext",
     "allowJs": true,
     "checkJs": true,
+    "strict": true,
+    "strictNullChecks": false,
     "moduleResolution": "node",
     "jsx": "react-jsx",
-    "types": ["react", "react-dom"]
   }
 }
