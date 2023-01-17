@@ -1,7 +1,7 @@
 from asyncio import PriorityQueue
 from random import randint
 import json
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Dict, Generic, Iterable, List, Optional, TypeVar
 from fastapi import APIRouter
 
 from pixivpy_async import AppPixivAPI
@@ -16,18 +16,24 @@ api = AppPixivAPI(proxy=config.proxy)
 
 json_result: Optional[Dict[str, Any]] = None
 
-def should_skip(tags: List[Dict[str, str]], data: Any) -> bool:
-    """filter r18 images (based on tags)
+def should_skip(tags: Iterable[str], data: Dict[str, Any]) -> bool:
+    """filter r18 images (based on tags and meta informations)
     """
     skip = False
+    # `illust_ai_type == 2`` means that this is an AI-generated work
     if config.excludeAI and data.get("illust_ai_type", None) == 2:
         return True
+    # TODO: not confirmed
+    # `restrict == 1` means that this is an R18G work
+    if config.r18g == False and data.get("restrict", 0) == 1:
+        return True
+    # `x_rescrtict == 1` means that this is an R18 work
+    if config.r18 == False and data.get("x_restrict", 0) == 1:
+        return True
+    # filter blacklisted tags
     blacklist = config.blacklist if config.blacklist else []
     for t in tags:
-        if config.r18 == False and t.get("name", "") == "R-18":
-            skip = True
-            break
-        if len(blacklist) and t.get("name", "") in blacklist:
+        if len(blacklist) and t in blacklist:
             skip = True
             break
     return skip
@@ -85,7 +91,7 @@ async def pixiv() -> Image:
         for i in json_result["illusts"]:
             # filter r18 images (based on tags)
             tags = i.get("tags", [])
-            if should_skip(tags, i):
+            if should_skip(map(lambda x: x.get("name", None), tags), i):
                 continue
 
             url = i["meta_single_page"].get("original_image_url", None)
