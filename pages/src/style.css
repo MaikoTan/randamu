@@ -39,11 +39,3 @@ body {
   background: rgba(0, 0, 0, 0.5);
   transition: background 0.5s ease-in-out;
 }
-#title, #author {
-  color: #fff;
-  display: block;
-  text-decoration: none;
-}
-#author {
-  font-size: 0.7em;
-}
