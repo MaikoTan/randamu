@@ -1,4 +1,52 @@
+import styled from "@emotion/styled";
 import { useEffect, useState } from "react";
+
+declare module 'csstype' {
+  interface Properties {
+    '--background-image'?: string
+  }
+}
+
+const Requesting = styled.div`
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const Bg = styled.div`
+  width: 100vw;
+  height: 100vh;
+  background-image: var(--background-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(10px);
+`
+
+const Fg = styled(Bg.withComponent('a'))`
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-size: contain;
+  transition: background-image 0.5s ease-in-out;
+  text-decoration: none;
+  display: block;
+  filter: unset;
+`
+
+const Title = styled((props?: any) => {
+  return <a target="_blank" {...props} />
+})`
+  color: #fff;
+  display: block;
+  text-decoration: none;
+`
+
+const Author = styled(Title)`
+  font-size: 0.7em;
+`
 
 export default function Randamu() {
   const [service, setService] = useState("pixiv");
@@ -19,13 +67,13 @@ export default function Randamu() {
     fetchConfig().catch(console.error);
   }, []);
 
-  async function getBg() {
+  const getBg = async () => {
     const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
     const r = await res.json();
     return r;
   }
 
-  function preload() {
+  const preload = () => {
     getBg().then((r) => {
       setNextBg(r);
       // preload image
@@ -53,20 +101,20 @@ export default function Randamu() {
   }, [interval, nextBg]);
 
   if (!bg) {
-    return <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>Requesting ...</div>;
+    return <Requesting>Requesting ...</Requesting>;
   }
   return (
-    <>
-      <div id="bg" style={{ backgroundImage: `url(${bg.url})` }} />
-      <a id="fg" style={{ backgroundImage: `url(${bg.url})` }} href="#" />
+    <div style={{ '--background-image': `url(${bg.url})` }}>
+      <Bg />
+      <Fg href="#" />
       <div id="info">
-        <a id="title" href={bg.page_url ?? "#"} target="_blank">
+        <Title href={bg.page_url ?? "#"}>
           {bg.title ?? ""}
-        </a>
-        <a id="author" href={bg.author_url ?? "#"} target="_blank">
+        </Title>
+        <Author href={bg.author_url ?? "#"}>
           {bg.author ?? ""}
-        </a>
+        </Author>
       </div>
-    </>
+    </div>
   );
 }
