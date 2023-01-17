@@ -1,11 +1,14 @@
 import styled from "@emotion/styled";
+import { css } from "@emotion/react";
 import { useEffect, useState } from "react";
 
-declare module 'csstype' {
+declare module "csstype" {
   interface Properties {
-    '--background-image'?: string
+    "--background-image"?: string;
   }
 }
+
+type Bg = Record<"title" | "url" | "page_url" | "author" | "author_url", string>;
 
 const Requesting = styled.div`
   width: 100vw;
@@ -23,9 +26,9 @@ const Bg = styled.div`
   background-position: center;
   background-repeat: no-repeat;
   filter: blur(10px);
-`
+`;
 
-const Fg = styled(Bg.withComponent('a'))`
+const Fg = styled(Bg.withComponent("a"))`
   position: absolute;
   top: 0;
   left: 0;
@@ -34,24 +37,50 @@ const Fg = styled(Bg.withComponent('a'))`
   text-decoration: none;
   display: block;
   filter: unset;
-`
+`;
 
-const Title = styled((props?: any) => {
-  return <a target="_blank" {...props} />
-})`
-  color: #fff;
-  display: block;
-  text-decoration: none;
-`
+const Title = (props: any) => {
+  return (
+    <a
+      target="_blank"
+      css={css`
+        color: #fff;
+        display: block;
+        text-decoration: none;
+      `}
+      {...props}
+    />
+  );
+};
 
 const Author = styled(Title)`
   font-size: 0.7em;
-`
+`;
+
+const Info = (props: { image: Bg }) => {
+  const { image } = props;
+  return (
+    <div
+      css={css`
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 5px 10px;
+        line-height: 1.3em;
+        background: rgba(0, 0, 0, 0.5);
+        transition: background 0.5s ease-in-out;
+      `}
+    >
+      <Title href={image.page_url ?? "#"}>{image.title ?? ""}</Title>
+      <Author href={image.author_url ?? "#"}>{image.author ?? ""}</Author>
+    </div>
+  );
+};
 
 export default function Randamu() {
   const [service, setService] = useState("pixiv");
   const [interval, setInterval] = useState(30);
-  type Bg = Record<"title" | "url" | "page_url" | "author" | "author_url", string>;
   const [bg, setBg] = useState<Bg>();
   const [nextBg, setNextBg] = useState<Bg>();
 
@@ -71,7 +100,7 @@ export default function Randamu() {
     const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
     const r = await res.json();
     return r;
-  }
+  };
 
   const preload = () => {
     getBg().then((r) => {
@@ -79,7 +108,7 @@ export default function Randamu() {
       // preload image
       new Image().src = r.url;
     });
-  }
+  };
 
   useEffect(() => {
     if (!bg) {
@@ -104,17 +133,10 @@ export default function Randamu() {
     return <Requesting>Requesting ...</Requesting>;
   }
   return (
-    <div style={{ '--background-image': `url(${bg.url})` }}>
+    <div style={{ "--background-image": `url(${bg.url})` }}>
       <Bg />
       <Fg href="#" />
-      <div id="info">
-        <Title href={bg.page_url ?? "#"}>
-          {bg.title ?? ""}
-        </Title>
-        <Author href={bg.author_url ?? "#"}>
-          {bg.author ?? ""}
-        </Author>
-      </div>
+      <Info image={bg} />
     </div>
   );
 }

@@ -8,34 +8,4 @@ body {
   height: 100vh;
   overflow: hidden;
 }
-#bg {
-  width: 100vw;
-  height: 100vh;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: blur(10px);
-}
-#fg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  transition: background-image 0.5s ease-in-out;
-  text-decoration: none;
-  display: block;
-}
-#info {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  padding: 5px 10px;
-  line-height: 1.3em;
-  background: rgba(0, 0, 0, 0.5);
-  transition: background 0.5s ease-in-out;
-}
+

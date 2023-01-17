@@ -2,7 +2,12 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react({
+    jsxImportSource: '@emotion/react',
+    babel: {
+      plugins: ['@emotion/babel-plugin'],
+    },
+  })],
   resolve: {
     alias: {
       react: 'https://esm.sh/react@18.2.0',
@@ -10,6 +15,7 @@ export default defineConfig({
     },
   },
   build: {
+    minify: false,
     rollupOptions: {
       output: {
         assetFileNames: 'assets/[name].[ext]',

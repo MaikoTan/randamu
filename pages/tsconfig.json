@@ -10,5 +10,6 @@
     "strictNullChecks": false,
     "moduleResolution": "node",
     "jsx": "react-jsx",
+    "jsxImportSource": "@emotion/react"
   }
 }
