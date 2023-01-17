@@ -23,9 +23,8 @@ def should_skip(tags: Iterable[str], data: Dict[str, Any]) -> bool:
     # `illust_ai_type == 2`` means that this is an AI-generated work
     if config.excludeAI and data.get("illust_ai_type", None) == 2:
         return True
-    # TODO: not confirmed
-    # `restrict == 1` means that this is an R18G work
-    if config.r18g == False and data.get("restrict", 0) == 1:
+    # `x_restrict == 2` means that this is an R18G work
+    if config.r18g == False and data.get("x_restrict", 0) > 1:
         return True
     # `x_rescrtict == 1` means that this is an R18 work
     if config.r18 == False and data.get("x_restrict", 0) == 1:
