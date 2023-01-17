@@ -1,8 +1,8 @@
-import { createElement as h } from "react";
-import { createRoot } from "react-dom/client";
+import { createElement as h } from 'react'
+import { createRoot } from 'react-dom/client'
 
 import { Randamu } from './view'
 
-const root = createRoot(document.querySelector("#app"));
+const root = createRoot(document.querySelector('#app'))
 
-root.render(h(Randamu));
+root.render(h(Randamu))
