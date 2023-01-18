@@ -18,7 +18,7 @@ class Config(object):
     
     def save_config(self, config: Dict[str, Any]):
         with open("config.json", "w") as f:
-            json.dump(config, f, indent=2)
+            json.dump(config, f, indent=2, ensure_ascii=False)
 
     def __getattr__(self, name):
         config = self.read_config()
