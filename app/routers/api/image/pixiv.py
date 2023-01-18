@@ -62,7 +62,7 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
 
 @router.get("/pixiv", response_model=Image)
 async def pixiv() -> Image:
-    if queue.empty():
+    while queue.empty():
         if config.refresh_token is not None:
             await api.login(refresh_token=config.refresh_token)
         if api.refresh_token is None:
@@ -80,7 +80,7 @@ async def pixiv() -> Image:
         elif recommend_base_illusts is not None:
             json_result = await api.illust_recommended(content_type="illust", bookmark_illust_ids=recommend_base_illusts)
         elif config.tag is not None:
-            json_result = await api.search_illust(config.tag, sort="popular_desc")
+            json_result = await api.search_illust(config.tag, search_target="exact_match_for_tags", sort="popular_desc")
         else:
             json_result = await api.illust_recommended(content_type="illust")
 
@@ -93,11 +93,11 @@ async def pixiv() -> Image:
             if should_skip(map(lambda x: x.get("name", None), tags), i):
                 continue
 
-            url = i["meta_single_page"].get("original_image_url", None)
+            url = i["meta_single_page"].get("large_image_url", None)
             if url is None:
                 for j in i["meta_pages"]:
                     queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(
-                        j["image_urls"]["original"].replace("i.pximg.net", "i.pixiv.re"),
+                        j["image_urls"]["large"].replace("i.pximg.net", "i.pixiv.re"),
                         i,
                     )))
             else:
