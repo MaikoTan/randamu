@@ -86,8 +86,22 @@ async def pixiv() -> Image:
 
         if json_result is not None and json_result.get("next_url", None):
             config.next_url = json_result.get("next_url")
+        
+        illusts = json_result.get("illusts", [])
 
-        for i in json_result["illusts"]:
+        if len(illusts) == 0:
+            print('ERROR: current searching method receive nothing')
+            if config.next_url is not None:
+                print('      ==> trying to remove next_url')
+                continue
+            if config.tag is not None:
+                print('      ==> trying to remove tags')
+                continue
+
+            print('ERROR: still get nothing from pixiv, consider change your config')
+            raise Exception('Nothing Received')
+
+        for i in illusts:
             # filter r18 images (based on tags)
             tags = i.get("tags", [])
             if should_skip(map(lambda x: x.get("name", None), tags), i):
