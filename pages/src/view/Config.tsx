@@ -1,8 +1,6 @@
 import { useState } from 'react'
 
-export default function Config() {
-  const config = useState()
-
+export default function Config(config: any) {
   const buildSchema = (schema: any) => {
     return [<div></div>]
   }
