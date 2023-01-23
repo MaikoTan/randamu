@@ -1,9 +1,11 @@
 from asyncio import PriorityQueue
+from base64 import b64encode
 from random import randint
 import json
 from typing import Any, Dict, Generic, Iterable, List, Optional, TypeVar
 from fastapi import APIRouter
 
+from aiohttp import ClientSession
 from pixivpy_async import AppPixivAPI
 
 from app.models.image import Image
@@ -60,8 +62,18 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
     )
 
 
+async def get_image(url: str) -> str:
+    async with ClientSession() as session:
+        async with session.get(url, headers={ "Referer": "https://www.pixiv.net/" }) as resp:
+            mime = resp.headers['Content-Type']
+            data = await resp.read()
+            base64 = b64encode(data).decode("utf-8")
+
+            return f"data:{mime};base64,{base64}"
+
+
 @router.get("/pixiv", response_model=Image)
-async def pixiv() -> Image:
+async def pixiv(image=False) -> Image:
     while queue.empty():
         if config.refresh_token is not None:
             await api.login(refresh_token=config.refresh_token)
@@ -112,11 +124,15 @@ async def pixiv() -> Image:
             if i.get("page_count", 1) > 1:
                 for j in i["meta_pages"]:
                     queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(
-                        j["image_urls"]["large"].replace("i.pximg.net", "i.pixiv.re"),
+                        j["image_urls"]["large"],
                         i,
                     )))
             else:
                 url = i["image_urls"].get("large", None)
                 # url = i["meta_single_page"].get("original_image_url", None)
-                queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url.replace("i.pximg.net", "i.pixiv.re"), i)))
-    return queue.get_nowait().data
+                queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url, i)))
+    data = queue.get_nowait().data
+    if image:
+        data.data_url = await get_image(data.url)
+    data.url = data.url.replace("i.pximg.net", "i.pixiv.re")
+    return data

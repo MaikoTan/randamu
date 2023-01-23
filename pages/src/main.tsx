@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 function Randamu() {
   const [service, setService] = useState("pixiv");
   const [interval, setInterval] = useState(30);
-  type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url', string>
+  type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string>
   const [bg, setBg] = useState<Bg>();
   const [nextBg, setNextBg] = useState<Bg>()
 
@@ -21,7 +21,7 @@ function Randamu() {
   }, []);
 
   async function getBg() {
-    const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
+    const res = await fetch(`/api/image/${service}?image`, { mode: "no-cors" });
     const r = await res.json();
     return r;
   }
@@ -30,7 +30,8 @@ function Randamu() {
     getBg().then((r) => {
       setNextBg(r)
       // preload image
-      new Image().src = r.url;
+      if (!r.data_url)
+        new Image().src = r.url;
     });
   }
 
@@ -57,8 +58,8 @@ function Randamu() {
     return <div>Requesting ...</div>;
   }
   return (<div>
-    <div id="bg" style={{ backgroundImage: `url(${bg.url})`}} />
-    <a id="fg" style={{ backgroundImage: `url(${bg.url})` }} href="#" />
+    <div id="bg" style={{ backgroundImage: `url(${bg.data_url ?? bg.url})`}} />
+    <a id="fg" style={{ backgroundImage: `url(${bg.data_url ?? bg.url})` }} href="#" />
     <div id="info">
       <a id="title" href={ bg.page_url ?? "#" } target="_blank">{ bg.title ?? "" }</a>
       <a

@@ -8,4 +8,5 @@ class Image(BaseModel):
     page_url: Optional[str] = None
     author: str = ""
     author_url: Optional[str] = None
+    data_url: Optional[str] = None
     data: Optional[dict] = None
