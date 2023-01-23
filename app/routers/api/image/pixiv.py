@@ -109,13 +109,14 @@ async def pixiv() -> Image:
             if should_skip(map(lambda x: x.get("name", None), tags), i):
                 continue
 
-            url = i["meta_single_page"].get("large_image_url", None)
-            if url is None:
+            if i.get("page_count", 1) > 1:
                 for j in i["meta_pages"]:
                     queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(
                         j["image_urls"]["large"].replace("i.pximg.net", "i.pixiv.re"),
                         i,
                     )))
             else:
+                url = i["image_urls"].get("large", None)
+                # url = i["meta_single_page"].get("original_image_url", None)
                 queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url.replace("i.pximg.net", "i.pixiv.re"), i)))
     return queue.get_nowait().data
