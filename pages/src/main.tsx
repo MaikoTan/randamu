@@ -21,7 +21,7 @@ function Randamu() {
   }, []);
 
   async function getBg() {
-    const res = await fetch(`/api/image/${service}?image`, { mode: "no-cors" });
+    const res = await fetch(`/api/image/${service}?image=1`, { mode: "no-cors" });
     const r = await res.json();
     return r;
   }
