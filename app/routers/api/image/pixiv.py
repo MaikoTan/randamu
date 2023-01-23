@@ -93,9 +93,11 @@ async def pixiv() -> Image:
             print('ERROR: current searching method receive nothing')
             if config.next_url is not None:
                 print('      ==> trying to remove next_url')
+                config.next_url = None
                 continue
             if config.tag is not None:
                 print('      ==> trying to remove tags')
+                config.tag = None
                 continue
 
             print('ERROR: still get nothing from pixiv, consider change your config')
