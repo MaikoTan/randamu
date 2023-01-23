@@ -4,7 +4,6 @@ venv/
 env/
 
 config.json
-user.*
 
 .vscode/
 
