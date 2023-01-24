@@ -54,12 +54,22 @@ function Randamu() {
     return () => clearTimeout(id)
   }, [interval, nextBg])
 
+  // FIXME: `next()` should clear timer, otherwise timer would still
+  // count the original secondes.
+  async function next() {
+    const nb = await getBg()
+    setBg(nextBg)
+    setNextBg(nb)
+    if (!nb.data_url)
+      new Image().src = nb.url
+  }
+
   if (!bg) {
     return <div>Requesting ...</div>;
   }
   return (<div>
     <div id="bg" style={{ backgroundImage: `url(${bg.data_url ?? bg.url})`}} />
-    <a id="fg" style={{ backgroundImage: `url(${bg.data_url ?? bg.url})` }} href="#" />
+    <a id="fg" style={{ backgroundImage: `url(${bg.data_url ?? bg.url})` }} onClick={next} />
     <div id="info">
       <a id="title" href={ bg.page_url ?? "#" } target="_blank">{ bg.title ?? "" }</a>
       <a
