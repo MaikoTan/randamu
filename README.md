@@ -24,7 +24,7 @@ A simple python script to serve a webpage with random images, which can be used 
 - Activate the virtual environment
 
     ```bash
-    # Linux
+    # Linux or macOS
     source venv/bin/activate
     # Windows
     venv\Scripts\activate
@@ -50,4 +50,5 @@ A simple python script to serve a webpage with random images, which can be used 
     For example:
 
     - Linux (KDE): Use Plasma Wallpaper Plugin [HTML Wallpaper](https://store.kde.org/p/1324580)
-    - Windows: [Wallpaper Engine](https://www.wallpaperengine.io/)
+    - Windows: [Lively Wallpaper](https://www.rocksdanister.com/lively/)
+    - macOS: [Plash](https://sindresorhus.com/plash)
