@@ -124,12 +124,14 @@ async def pixiv(image=False) -> Image:
             if i.get("page_count", 1) > 1:
                 for j in i["meta_pages"]:
                     queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(
-                        j["image_urls"]["large"],
+                        j["image_urls"][config.size if config.size else "original"],
                         i,
                     )))
             else:
-                url = i["image_urls"].get("large", None)
-                # url = i["meta_single_page"].get("original_image_url", None)
+                if not config.size or config.size == "original":
+                    url = i["meta_single_page"].get("original_image_url", None)
+                else:
+                    url = i["image_urls"].get(config.size, None)
                 queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url, i)))
     data = queue.get_nowait().data
     if image:
