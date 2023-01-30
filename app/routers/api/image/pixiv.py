@@ -64,7 +64,7 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
 
 async def get_image(url: str) -> str:
     async with ClientSession() as session:
-        async with session.get(url, headers={ "Referer": "https://www.pixiv.net/" }) as resp:
+        async with session.get(url, headers={ "Referer": "https://www.pixiv.net/" }, proxy=config.proxy) as resp:
             mime = resp.headers['Content-Type']
             data = await resp.read()
             base64 = b64encode(data).decode("utf-8")
@@ -121,6 +121,9 @@ async def pixiv(image=False) -> Image:
             if should_skip(map(lambda x: x.get("name", None), tags), i):
                 continue
 
+            if config.maxPage is not None and i.get("page_count", 1) > config.maxPage:
+                # skip if page count is too large, the image is probably a comic
+                continue
             if i.get("page_count", 1) > 1:
                 for j in i["meta_pages"]:
                     queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(
