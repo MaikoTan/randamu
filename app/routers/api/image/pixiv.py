@@ -80,21 +80,24 @@ async def pixiv(image=False) -> Image:
         if api.refresh_token is None:
             await api.login_web()
         config.refresh_token = api.refresh_token
-        recommend_base_illusts = config.recommend_base_illusts
         global json_result
         next_url = config.next_url
 
+        method = config.search_type or "search_illust"
         if next_url is not None:
             next_qs = api.parse_qs(next_url)
-            if next_qs.get("word") is None:
+            if method == "search_illust" and next_qs.get("word") is None:
                 next_qs["word"] = config.tag
-            json_result = await api.search_illust(**next_qs)
-        elif recommend_base_illusts is not None:
-            json_result = await api.illust_recommended(content_type="illust", bookmark_illust_ids=recommend_base_illusts)
-        elif config.tag is not None:
-            json_result = await api.search_illust(config.tag, search_target="exact_match_for_tags", sort="popular_desc")
+            json_result = await object.__getattribute__(api, method)(**next_qs)
         else:
-            json_result = await api.illust_recommended(content_type="illust")
+            if method == "illust_recommended":
+                json_result = await api.illust_recommended(content_type="illust", bookmark_illust_ids=config.recommend_base_illusts)
+            elif method == "search_illust" and config.tag is not None:
+                json_result = await api.search_illust(config.tag, search_target="exact_match_for_tags", sort="popular_desc")
+                config.search_type = "search_illust"
+            else:
+                json_result = await api.illust_recommended(content_type="illust")
+                config.search_type = "illust_recommended"
 
         if json_result is not None and json_result.get("next_url", None):
             config.next_url = json_result.get("next_url")
