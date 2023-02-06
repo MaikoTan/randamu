@@ -9,6 +9,7 @@ class LoliconConfig(BaseModel):
     dateAfter: Optional[int]
     dateBefore: Optional[int]
 
+
 class RandamuConfig(BaseModel):
     interval = 30
     service = "lolicon"

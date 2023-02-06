@@ -7,8 +7,16 @@ from app.models.image import Image
 
 router = APIRouter()
 
+
 @router.get("/lolicon", response_model=Image)
-def lolicon(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=None, dateBefore: Optional[int]=None) -> Image:
+def lolicon(
+    tag=None,
+    r18=0,
+    num=1,
+    excludeAI=True,
+    dateAfter: Optional[int] = None,
+    dateBefore: Optional[int] = None,
+) -> Image:
     payload = {
         "r18": r18,
         "num": num,
@@ -30,5 +38,5 @@ def lolicon(tag=None, r18=0, num=1, excludeAI=True, dateAfter: Optional[int]=Non
         author=i.get("author", ""),
         page_url=f'https://pixiv.net/i/{i.get("pid")}',
         author_url=f'https://pixiv.net/u/{i.get("uid")}',
-        data=i,  
+        data=i,
     )
