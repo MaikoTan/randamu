@@ -110,6 +110,7 @@ async def pixiv(image=False) -> Image:
             if method == "illust_recommended":
                 json_result = await api.illust_recommended(
                     content_type="illust",
+                    offset=config.offset or 0,
                     bookmark_illust_ids=config.recommend_base_illusts,
                 )
             elif method == "search_illust" and config.tag is not None:
@@ -122,10 +123,11 @@ async def pixiv(image=False) -> Image:
                 json_result = await api.illust_recommended(content_type="illust")
                 config.search_type = "illust_recommended"
 
-        if json_result is not None and json_result.get("next_url", None):
+        if json_result is not None and json_result.get("next_url", None) and config.search_type == "search_illust":
             config.next_url = json_result.get("next_url")
 
         illusts = json_result.get("illusts", [])
+        config.offset = (config.offset or 0) + len(illusts)
 
         if len(illusts) == 0:
             print("ERROR: current searching method receive nothing")
@@ -140,6 +142,10 @@ async def pixiv(image=False) -> Image:
             if config.search_type == "search_illust":
                 print("      ==> trying to change search method to illust_recommended")
                 config.search_type = "illust_recommended"
+                continue
+            if config.search_type == "illust_recommended":
+                print("   ==> trying to change offset to 0")
+                config.offset = 0
                 continue
 
             print("ERROR: still get nothing from pixiv, consider change your config")
