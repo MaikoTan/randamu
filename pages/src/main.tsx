@@ -2,7 +2,7 @@ import { createElement as h, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 function Randamu() {
-  const [service, setService] = useState("pixiv");
+  const [service, setService] = useState();
   const [interval, setInterval] = useState(30);
   type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string>
   const [bg, setBg] = useState<Bg>();
