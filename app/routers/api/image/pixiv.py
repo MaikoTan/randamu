@@ -133,7 +133,7 @@ async def pixiv(image=False) -> Image:
         config.next_url = json_result.get("next_url")
 
     illusts = json_result.get("illusts", [])
-    config.offset = (config.offset or 0) + len(illusts)
+    # config.offset = (config.offset or 0) + len(illusts)
 
     if len(illusts) == 0:
         print("ERROR: current searching method receive nothing")

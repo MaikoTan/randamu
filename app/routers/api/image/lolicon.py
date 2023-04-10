@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from fastapi import APIRouter
 import requests
@@ -21,6 +21,8 @@ def lolicon(
         "r18": r18,
         "num": num,
         "excludeAI": excludeAI,
+        "proxy": "i.pixiv.nl",
+        "size": ["regular", "original"],
     }
     if tag is not None:
         payload["tag"] = [tag]
@@ -31,7 +33,7 @@ def lolicon(
     r = requests.post("https://api.lolicon.app/setu/v2", json=payload)
     j = r.json()
     i = j["data"][0]
-    url: str = i["urls"]["original"]
+    url: str = i["urls"]["regular"]
     return Image(
         url=url,
         title=i.get("title", ""),
