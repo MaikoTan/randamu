@@ -13,21 +13,23 @@ function Randamu() {
       var resp = await fetch("/api/config", { mode: "no-cors" });
       var json = await resp.json();
 
-      setService(json.service ?? "pixiv");
-      setInterval(json.interval ?? 30);
+      setService(json.service);
+      setInterval(json.interval);
     };
 
     fetchConfig().catch(console.error);
   }, []);
 
   async function getBg() {
-    const res = await fetch(`/api/image/${service}?image=1`, { mode: "no-cors" });
+    if (!service) return;
+    const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
     const r = await res.json();
     return r;
   }
 
   function preload() {
     getBg().then((r) => {
+      if (!r) return;
       setNextBg(r)
       // preload image
       if (!r.data_url)
@@ -39,6 +41,7 @@ function Randamu() {
     if (!bg) {
       // load the first one
       getBg().then((r) => {
+        if (!r) return;
         setBg(r);
         preload();
       });

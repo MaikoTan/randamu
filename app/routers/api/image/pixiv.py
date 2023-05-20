@@ -59,13 +59,14 @@ queue: PriorityQueue[PriorityEntry[Image]] = PriorityQueue()
 
 def _to_image(url: str, data: Dict[str, Any]) -> Image:
     return Image(
-        url=re.sub(r"^https://i.pximg.net", "/image/pixiv/proxy", url),
+        url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
         title=data["title"],
         author=data["user"]["name"],
         page_url=f'https://pixiv.net/i/{data.get("id")}',
         author_url=f'https://pixiv.net/u/{data.get("user", {}).get("id")}',
         data=data,
     )
+
 
 @router.get("/pixiv", response_model=Image)
 async def pixiv() -> Image:
@@ -116,19 +117,19 @@ async def pixiv() -> Image:
         if config.next_url is not None:
             print("      ==> trying to remove next_url")
             config.next_url = None
-            return await pixiv(image=image)
+            return await pixiv()
         if config.tag is not None:
             print("      ==> trying to remove tags")
             config.tag = None
-            return await pixiv(image=image)
+            return await pixiv()
         if config.search_type == "search_illust":
             print("      ==> trying to change search method to illust_recommended")
             config.search_type = "illust_recommended"
-            return await pixiv(image=image)
+            return await pixiv()
         if config.search_type == "illust_recommended":
             print("   ==> trying to change offset to 0")
             config.offset = 0
-            return await pixiv(image=image)
+            return await pixiv()
 
         print("ERROR: still get nothing from pixiv, consider change your config")
         raise Exception("Nothing Received")
@@ -161,19 +162,27 @@ async def pixiv() -> Image:
             else:
                 url = i["image_urls"].get(config.size, None)
             queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url, i)))
-    return await pixiv(image=image)
+    return await pixiv()
 
 
-@router.get("/proxy/{rest:path}")
+@router.get("/pixiv/proxy/{rest:path}")
 def proxy_pixiv(rest: str):
     url = "https://i.pximg.net/" + rest
 
-    response = requests.get(
-        url,
-        stream=True,
-        proxies={"http": config.proxy, "https": config.proxy} if config.proxy else None,
-        headers={"Referer": "https://www.pixiv.net/"},
-    )
+    for i in range(3):
+        response = requests.get(
+            url,
+            stream=True,
+            proxies={"http": config.proxy, "https": config.proxy} if config.proxy else None,
+            headers={"Referer": "https://www.pixiv.net/"},
+        )
+        if response.status_code == 200:
+            break
+        else:
+            print(f"ERROR: {response.status_code} when fetching {url}")
+            print(f"       retrying... ({i + 1}/3)")
+    else:
+        raise Exception("Failed to fetch image")
 
     def get_image():
         for chunk in response.iter_content(chunk_size=1024):
