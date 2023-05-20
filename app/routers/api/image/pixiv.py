@@ -126,13 +126,13 @@ async def pixiv() -> Image:
             print("      ==> trying to change search method to illust_recommended")
             config.search_type = "illust_recommended"
             return await pixiv()
-        if config.search_type == "illust_recommended":
+        if config.offset != 0:
             print("   ==> trying to change offset to 0")
             config.offset = 0
             return await pixiv()
 
-        print("ERROR: still get nothing from pixiv, consider change your config")
-        raise Exception("Nothing Received")
+        print("    ==> trying to relogin")
+        api.refresh_token = None
 
     for i in illusts:
         # filter r18 images (based on tags)
