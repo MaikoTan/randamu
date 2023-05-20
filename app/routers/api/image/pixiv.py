@@ -1,9 +1,11 @@
 from asyncio import PriorityQueue
-from base64 import b64encode
 from random import randint
+import re
 
 from typing import Any, Dict, Generic, Iterable, Optional, TypeVar
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
+import requests
 
 from aiohttp import ClientSession
 from pixivpy_async import AppPixivAPI
@@ -57,7 +59,7 @@ queue: PriorityQueue[PriorityEntry[Image]] = PriorityQueue()
 
 def _to_image(url: str, data: Dict[str, Any]) -> Image:
     return Image(
-        url=url,
+        url=re.sub(r"^https://i.pximg.net", "/image/pixiv/proxy", url),
         title=data["title"],
         author=data["user"]["name"],
         page_url=f'https://pixiv.net/i/{data.get("id")}',
@@ -65,36 +67,10 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
         data=data,
     )
 
-
-async def get_image(url: str) -> str:
-    attempts = 10
-    async with ClientSession() as session:
-        while attempts > 0:
-            try:
-                async with session.get(
-                    url,
-                    headers={"Referer": "https://www.pixiv.net/"},
-                    proxy=config.proxy,
-                ) as resp:
-                    mime = resp.headers["Content-Type"]
-                    data = await resp.read()
-                    base64 = b64encode(data).decode("utf-8")
-
-                    return f"data:{mime};base64,{base64}"
-            except Exception as e:
-                print(e)
-                attempts -= 1
-                continue
-        raise Exception("Failed to get image")
-
-
 @router.get("/pixiv", response_model=Image)
-async def pixiv(image=False) -> Image:
+async def pixiv() -> Image:
     while not queue.empty():
         data = queue.get_nowait().data
-        if image:
-            data.data_url = await get_image(data.url)
-        data.url = data.url.replace("i.pximg.net", "i.pixiv.re")
         return data
 
     if api.refresh_token is None:
@@ -186,3 +162,24 @@ async def pixiv(image=False) -> Image:
                 url = i["image_urls"].get(config.size, None)
             queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url, i)))
     return await pixiv(image=image)
+
+
+@router.get("/proxy/{rest:path}")
+def proxy_pixiv(rest: str):
+    url = "https://i.pximg.net/" + rest
+
+    response = requests.get(
+        url,
+        stream=True,
+        proxies={"http": config.proxy, "https": config.proxy} if config.proxy else None,
+        headers={"Referer": "https://www.pixiv.net/"},
+    )
+
+    def get_image():
+        for chunk in response.iter_content(chunk_size=1024):
+            yield chunk
+
+    return StreamingResponse(
+        get_image(),
+        media_type=response.headers["Content-Type"],
+    )

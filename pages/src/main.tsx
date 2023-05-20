@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 function Randamu() {
   const [service, setService] = useState();
   const [interval, setInterval] = useState(30);
-  type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string> & { fallback_urls: string[] }
+  type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string>
   const [bg, setBg] = useState<Bg>();
   const [nextBg, setNextBg] = useState<Bg>()
 
@@ -68,10 +68,10 @@ function Randamu() {
     return <div>Requesting ...</div>;
   }
 
-  const bgImages = [bg.data_url ?? bg.url, ...bg.fallback_urls].map((i) => `url(${i})`).join(', ')
+  const bgImage = `url${bg.data_url ?? bg.url}`
   return (<div>
-    <div id="bg" style={{ backgroundImage: bgImages }} />
-    <a id="fg" style={{ backgroundImage: bgImages }} onClick={next} />
+    <div id="bg" style={{ backgroundImage: bgImage }} />
+    <a id="fg" style={{ backgroundImage: bgImage }} onClick={next} />
     <div id="info">
       <a id="title" href={ bg.page_url ?? "#" } target="_blank">{ bg.title ?? "" }</a>
       <a

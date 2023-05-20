@@ -22,7 +22,7 @@ def lolicon(
         "r18": r18,
         "num": num,
         "excludeAI": excludeAI,
-        "proxy": "i.pixiv.cat",
+        "proxy": "null",
         "size": ["regular", "original"],
     }
     if tag is not None:
@@ -38,11 +38,7 @@ def lolicon(
     if not url:
         return lolicon(tag, r18, num, excludeAI, dateAfter, dateBefore)
     return Image(
-        url=url,
-        fallback_urls=[
-            re.sub(r"^https://i.pixiv.cat", "https://i.pixiv.re", url),
-            re.sub(r"^https://i.pixiv.cat", "https://i.pixiv.nl", url),
-        ],
+        url=re.sub(r"^https://i.pximg.net", "/image/pixiv/proxy", url),
         title=i.get("title", ""),
         author=i.get("author", ""),
         page_url=f'https://pixiv.net/i/{i.get("pid")}',
