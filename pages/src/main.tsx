@@ -4,9 +4,10 @@ import { createRoot } from "react-dom/client";
 function Randamu() {
   const [service, setService] = useState();
   const [interval, setInterval] = useState(30);
-  type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string>
+  type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string> & { pixiv_id?: number }
   const [bg, setBg] = useState<Bg>();
   const [nextBg, setNextBg] = useState<Bg>()
+  const [like, setLike] = useState(false)
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -67,11 +68,32 @@ function Randamu() {
       new Image().src = nb.url
   }
 
+  async function doLike() {
+    if (!bg?.pixiv_id) return;
+    await fetch(`/api/image/pixiv/like?id=${bg.pixiv_id}`, { mode: "no-cors" });
+    setLike(true)
+  }
+
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (e?.key === "l" || e?.key === "L") {
+        e.preventDefault()
+        doLike()
+      } else if (e?.key === "n" || e?.key === "N") {
+        e.preventDefault()
+        next()
+      }
+    }
+    document.addEventListener("keydown", listener)
+
+    return () => document.removeEventListener("keydown", listener)
+  })
+
   if (!bg?.url) {
     return <div>Requesting ...</div>;
   }
 
-  const bgImage = `url${bg.data_url ?? bg.url}`
+  const bgImage = `url(${bg.data_url ?? bg.url})`
   return (<div>
     <div id="bg" style={{ backgroundImage: bgImage }} />
     <a id="fg" style={{ backgroundImage: bgImage }} onClick={next} />
@@ -85,6 +107,7 @@ function Randamu() {
         { bg.author ?? "" }
       </a>
     </div>
+    <div id="like" className={ like ? "liked" : "" } onClick={doLike} />
   </div>)
 }
 

@@ -11,3 +11,4 @@ class Image(BaseModel):
     author_url: Optional[str] = None
     data_url: Optional[str] = None
     data: Optional[dict] = None
+    pixiv_id: Optional[int] = None

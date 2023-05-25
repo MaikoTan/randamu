@@ -8,4 +8,4 @@ app = FastAPI()
 
 app.include_router(routers.router)
 app.mount("/user", StaticFiles(directory="user"), name="user")
-app.mount("/", StaticFiles(directory="pages/dist", html=True), name="static")
+app.mount("/", StaticFiles(directory="pages/dist", html=True, check_dir=True), name="static")

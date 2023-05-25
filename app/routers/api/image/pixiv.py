@@ -65,6 +65,7 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
         page_url=f'https://pixiv.net/i/{data.get("id")}',
         author_url=f'https://pixiv.net/u/{data.get("user", {}).get("id")}',
         data=data,
+        pixiv_id=data.get("id"),
     )
 
 
@@ -163,6 +164,13 @@ async def pixiv() -> Image:
                 url = i["image_urls"].get(config.size, None)
             queue.put_nowait(PriorityEntry(randint(0, 100), _to_image(url, i)))
     return await pixiv()
+
+
+@router.get("/pixiv/like")
+async def pixiv_like(id: int):
+    await api.illust_bookmark_add(id)
+
+    return {"status": "ok"}
 
 
 @router.get("/pixiv/proxy/{rest:path}")

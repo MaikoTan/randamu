@@ -44,4 +44,5 @@ def lolicon(
         page_url=f'https://pixiv.net/i/{i.get("pid")}',
         author_url=f'https://pixiv.net/u/{i.get("uid")}',
         data=i,
+        pixiv_id=i.get("pid"),
     )
