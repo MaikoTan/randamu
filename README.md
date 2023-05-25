@@ -8,6 +8,11 @@ A simple python script to serve a webpage with random images, which can be used 
 - [x] [Lolicon setu API](https://api.lolicon.app/#/setu)
 - [x] [Stable Horde](https://stablehorde.net/)
 
+## Features
+
+- Press `N` or click page to switch to the next one without waiting.
+- Press `L` to bookmark the current image (only available on Pixiv).
+
 ## Usage
 
 - Clone the repository
