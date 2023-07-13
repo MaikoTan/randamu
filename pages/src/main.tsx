@@ -43,6 +43,7 @@ function Randamu() {
       // load the first one
       getBg().then((r) => {
         if (!r) return;
+        setLike(false)
         setBg(r);
         preload();
       });
@@ -51,6 +52,7 @@ function Randamu() {
 
   useEffect(() => {
     const id = window.setTimeout(() => {
+      setLike(false)
       setBg(nextBg)
       preload()
     }, interval * 1000)
@@ -62,6 +64,7 @@ function Randamu() {
   // count the original secondes.
   async function next() {
     const nb = await getBg()
+    setLike(false)
     setBg(nextBg)
     setNextBg(nb)
     if (!nb.data_url)
