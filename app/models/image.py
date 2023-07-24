@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel
 
 
@@ -10,5 +10,5 @@ class Image(BaseModel):
     author: str = ""
     author_url: Optional[str] = None
     data_url: Optional[str] = None
-    data: Optional[dict] = None
+    # data: Any = None
     pixiv_id: Optional[int] = None

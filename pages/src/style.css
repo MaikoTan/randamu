@@ -40,6 +40,13 @@ body {
   background: rgba(0, 0, 0, 0.5);
   transition: background 0.5s ease-in-out;
 }
+#info.bottom {
+  top: auto;
+  bottom: 0;
+}
+#info.hide {
+  opacity: 0;
+}
 #title, #author {
   color: #fff;
   display: block;

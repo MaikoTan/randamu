@@ -64,7 +64,7 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
         author=data["user"]["name"],
         page_url=f'https://pixiv.net/i/{data.get("id")}',
         author_url=f'https://pixiv.net/u/{data.get("user", {}).get("id")}',
-        data=data,
+        # data=data,
         pixiv_id=data.get("id"),
     )
 
@@ -73,6 +73,8 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
 async def pixiv() -> Image:
     while not queue.empty():
         data = queue.get_nowait().data
+        if data is None:
+            return await pixiv()
         return data
 
     if api.refresh_token is None:

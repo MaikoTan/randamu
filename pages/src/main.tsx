@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 function Randamu() {
   const [service, setService] = useState();
   const [interval, setInterval] = useState(30);
+  const [metainfo, setMetainfo] = useState<{ enable: boolean; position: 'top' | 'bottom' }>({ enable: true, position: 'top' })
   type Bg = Record<'title' | 'url' | 'page_url' | 'author' | 'author_url' | 'data_url', string> & { pixiv_id?: number }
   const [bg, setBg] = useState<Bg>();
   const [nextBg, setNextBg] = useState<Bg>()
@@ -16,6 +17,12 @@ function Randamu() {
 
       setService(json.service);
       setInterval(json.interval);
+      if (json.metainfo?.enable === false) {
+        setMetainfo({ ...metainfo, enable: false })
+      }
+      if (json.metainfo?.position) {
+        setMetainfo({ ...metainfo, position: json.metainfo.position })
+      }
     };
 
     fetchConfig().catch(console.error);
@@ -100,7 +107,7 @@ function Randamu() {
   return (<div>
     <div id="bg" style={{ backgroundImage: bgImage }} />
     <a id="fg" style={{ backgroundImage: bgImage }} onClick={next} />
-    <div id="info">
+    <div id="info" className={[!metainfo.enable ? 'hide': '', metainfo.position === 'bottom' ? 'bottom' : ''].join(' ')}>
       <a id="title" href={ bg.page_url ?? "#" } target="_blank">{ bg.title ?? "" }</a>
       <a
         id="author"
