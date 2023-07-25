@@ -4,13 +4,13 @@ from pydantic import BaseModel
 
 
 class LoliconConfig(BaseModel):
-    r18 = 0
-    excludeAI = True
+    r18: int = 0
+    excludeAI: bool = True
     dateAfter: Optional[int]
     dateBefore: Optional[int]
 
 
 class RandamuConfig(BaseModel):
-    interval = 30
-    service = "lolicon"
+    interval: int = 30
+    service: str = "lolicon"
     lolicon: Optional[LoliconConfig]
