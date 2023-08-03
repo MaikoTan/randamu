@@ -59,7 +59,8 @@ queue: PriorityQueue[PriorityEntry[Image]] = PriorityQueue()
 
 def _to_image(url: str, data: Dict[str, Any]) -> Image:
     return Image(
-        url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
+        # url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
+        url=re.sub(r"^https://i.pximg.net", "https://i.pixiv.re", url),
         title=data["title"],
         author=data["user"]["name"],
         page_url=f'https://pixiv.net/i/{data.get("id")}',
@@ -67,6 +68,14 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
         # data=data,
         pixiv_id=data.get("id"),
     )
+
+async def login() -> None:
+    if api.refresh_token is None:
+        if config.refresh_token is not None:
+            await api.login(refresh_token=config.refresh_token)
+        if api.refresh_token is None:
+            await api.login_web()
+        config.refresh_token = api.refresh_token
 
 
 @router.get("/pixiv", response_model=Image)
@@ -77,12 +86,8 @@ async def pixiv() -> Image:
             return await pixiv()
         return data
 
-    if api.refresh_token is None:
-        if config.refresh_token is not None:
-            await api.login(refresh_token=config.refresh_token)
-        if api.refresh_token is None:
-            await api.login_web()
-        config.refresh_token = api.refresh_token
+    await login()
+
     global json_result
     next_url = config.next_url
 
@@ -170,6 +175,7 @@ async def pixiv() -> Image:
 
 @router.get("/pixiv/like")
 async def pixiv_like(id: int):
+    await login()
     await api.illust_bookmark_add(id)
 
     return {"status": "ok"}

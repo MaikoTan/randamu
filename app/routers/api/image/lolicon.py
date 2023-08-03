@@ -38,7 +38,7 @@ def lolicon(
     if not url:
         return lolicon(tag, r18, num, excludeAI, dateAfter, dateBefore)
     return Image(
-        url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
+        url=re.sub(r"^https://i.pximg.net", "https://i.pixiv.re", url),
         title=i.get("title", ""),
         author=i.get("author", ""),
         page_url=f'https://pixiv.net/i/{i.get("pid")}',
