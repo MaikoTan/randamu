@@ -106,9 +106,10 @@ function Randamu() {
   const bgImage = `url(${bg.data_url ?? bg.url})`
   return (<div>
     <div id="bg" style={{ backgroundImage: bgImage }} />
-    <a id="fg" style={{ backgroundImage: bgImage }} onClick={next} />
+    <div id="fg" style={{ backgroundImage: bgImage }} />
     <div id="info" className={[!metainfo.enable ? 'hide': '', metainfo.position === 'bottom' ? 'bottom' : ''].join(' ')}>
       <a id="title" href={ bg.page_url ?? "#" } target="_blank">{ bg.title ?? "" }</a>
+      <br />
       <a
         id="author"
         href={ bg.author_url ?? "#" }
@@ -116,8 +117,11 @@ function Randamu() {
       >
         { bg.author ?? "" }
       </a>
+      <a id="next" href="#" onClick={next}>➡️</a>
+      <a id="like" href="#" onClick={doLike}>
+        { like ? '❤️' : '💙' }
+      </a>
     </div>
-    <div id="like" className={ like ? "liked" : "" } onClick={doLike} />
   </div>)
 }
 
