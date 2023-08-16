@@ -109,6 +109,7 @@ async def pixiv() -> Image:
                 config.tag,
                 search_target="exact_match_for_tags",
                 sort="popular_desc",
+                offset=config.offset or 0,
             )
         else:
             json_result = await api.illust_recommended(content_type="illust")
@@ -116,9 +117,9 @@ async def pixiv() -> Image:
 
     if json_result is not None and json_result.get("next_url", None) and config.search_type == "search_illust":
         config.next_url = json_result.get("next_url")
+        config.offset = (config.offset or 0) + len(json_result.get("illusts", []))
 
     illusts = json_result.get("illusts", [])
-    # config.offset = (config.offset or 0) + len(illusts)
 
     if len(illusts) == 0:
         print("ERROR: current searching method receive nothing")
@@ -130,13 +131,13 @@ async def pixiv() -> Image:
             print("      ==> trying to remove tags")
             config.tag = None
             return await pixiv()
-        if config.search_type == "search_illust":
-            print("      ==> trying to change search method to illust_recommended")
-            config.search_type = "illust_recommended"
-            return await pixiv()
         if config.offset != 0:
             print("   ==> trying to change offset to 0")
             config.offset = 0
+            return await pixiv()
+        if config.search_type == "search_illust":
+            print("      ==> trying to change search method to illust_recommended")
+            config.search_type = "illust_recommended"
             return await pixiv()
 
         print("    ==> trying to relogin")
