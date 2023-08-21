@@ -1,6 +1,7 @@
 from asyncio import PriorityQueue
 from random import randint
 import re
+import time
 
 from typing import Any, Dict, Generic, Iterable, Optional, TypeVar
 from fastapi import APIRouter
@@ -19,6 +20,8 @@ config = Config("pixiv")
 api = AppPixivAPI(proxy=config.proxy)
 
 json_result: Optional[Dict[str, Any]] = None
+
+refresh_token_expire: float = 0
 
 
 def should_skip(tags: Iterable[str], data: Dict[str, Any]) -> bool:
@@ -59,8 +62,8 @@ queue: PriorityQueue[PriorityEntry[Image]] = PriorityQueue()
 
 def _to_image(url: str, data: Dict[str, Any]) -> Image:
     return Image(
-        # url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
-        url=re.sub(r"^https://i.pximg.net", "https://i.pixiv.re", url),
+        url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
+        # url=re.sub(r"^https://i.pximg.net", "https://i.pixiv.re", url),
         title=data["title"],
         author=data["user"]["name"],
         page_url=f'https://pixiv.net/i/{data.get("id")}',
@@ -70,12 +73,13 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
     )
 
 async def login() -> None:
-    if api.refresh_token is None:
+    if api.refresh_token is None or time.time() > refresh_token_expire:
         if config.refresh_token is not None:
             await api.login(refresh_token=config.refresh_token)
         if api.refresh_token is None:
             await api.login_web()
         config.refresh_token = api.refresh_token
+        refresh_token_expire = time.time() + 60 * 60 # 1 hour to expire
 
 
 @router.get("/pixiv", response_model=Image)
