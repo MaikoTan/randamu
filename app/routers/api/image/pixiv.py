@@ -73,6 +73,7 @@ def _to_image(url: str, data: Dict[str, Any]) -> Image:
     )
 
 async def login() -> None:
+    global refresh_token_expire
     if api.refresh_token is None or time.time() > refresh_token_expire:
         if config.refresh_token is not None:
             await api.login(refresh_token=config.refresh_token)
