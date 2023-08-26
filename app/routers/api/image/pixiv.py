@@ -83,6 +83,8 @@ async def login() -> None:
         refresh_token_expire = time.time() + 60 * 60 # 1 hour to expire
 
 
+viewed = set()
+
 @router.get("/pixiv", response_model=Image)
 async def pixiv() -> Image:
     while not queue.empty():
@@ -117,7 +119,7 @@ async def pixiv() -> Image:
                 offset=config.offset or 0,
             )
         else:
-            json_result = await api.illust_recommended(content_type="illust")
+            json_result = await api.illust_recommended(content_type="illust", viewed=list(viewed))
             config.search_type = "illust_recommended"
 
     if json_result is not None and json_result.get("next_url", None) and config.search_type == "search_illust":
@@ -171,6 +173,8 @@ async def pixiv() -> Image:
                     )
                 )
         else:
+            if config.search_type == "illust_recommended":
+                viewed.add(i.get("id"))
             if not config.size or config.size == "original":
                 url = i["meta_single_page"].get("original_image_url", None)
             else:
