@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any, Dict, Optional
 
 
@@ -18,8 +19,9 @@ class Config(object):
         return config
 
     def save_config(self, config: Dict[str, Any]):
-        with open("config.json", "w") as f:
+        with open("config.json.tmp", "w") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
+        os.replace("config.json.tmp", "config.json")
 
     def __getattr__(self, name):
         config = self.read_config()
