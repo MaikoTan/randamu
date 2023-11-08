@@ -105,11 +105,12 @@ async def pixiv() -> Image:
             next_qs["word"] = config.tag
         json_result = await object.__getattribute__(api, method)(**next_qs)
     else:
-        if method == "illust_recommended":
+        if method == "illust_recommended" and config.recommend_base_illusts:
             json_result = await api.illust_recommended(
                 content_type="illust",
                 offset=config.offset or 0,
                 bookmark_illust_ids=config.recommend_base_illusts,
+                viewed=list(viewed),
             )
         elif method == "search_illust" and config.tag is not None:
             json_result = await api.search_illust(
@@ -119,7 +120,7 @@ async def pixiv() -> Image:
                 offset=config.offset or 0,
             )
         else:
-            json_result = await api.illust_recommended(content_type="illust", viewed=list(viewed))
+            json_result = await api.illust_recommended(content_type="illust", offset=config.offset or 0, viewed=list(viewed))
             config.search_type = "illust_recommended"
 
     if json_result is not None and json_result.get("next_url", None) and config.search_type == "search_illust":
