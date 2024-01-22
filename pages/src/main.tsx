@@ -15,7 +15,7 @@ function Randamu() {
 
   useEffect(() => {
     const fetchConfig = async () => {
-      var resp = await fetch(API_ROOT + "/config", { mode: "no-cors" });
+      var resp = await fetch(API_ROOT + "/config", { mode: "cors" });
       var json = await resp.json();
 
       setService(json.service);
@@ -33,7 +33,7 @@ function Randamu() {
 
   async function getBg() {
     if (!service) return;
-    const res = await fetch(API_ROOT + `/image/${service}`, { mode: "no-cors" });
+    const res = await fetch(API_ROOT + `/image/${service}`, { mode: "cors" });
     const r = await res.json();
     return r;
   }
@@ -83,7 +83,7 @@ function Randamu() {
 
   async function doLike() {
     if (!bg?.pixiv_id) return;
-    await fetch(API_ROOT + `/image/pixiv/like?id=${bg.pixiv_id}`, { mode: "no-cors" });
+    await fetch(API_ROOT + `/image/pixiv/like?id=${bg.pixiv_id}`, { mode: "cors" });
     setLike(true)
   }
 
