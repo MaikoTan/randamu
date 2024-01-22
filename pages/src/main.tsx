@@ -1,6 +1,9 @@
 import { createElement as h, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+// get api root from current url query param `api_root`
+const API_ROOT = new URLSearchParams(window.location.search).get("api_root") ?? "http://localhost:8089/api";
+
 function Randamu() {
   const [service, setService] = useState();
   const [interval, setInterval] = useState(30);
@@ -30,7 +33,7 @@ function Randamu() {
 
   async function getBg() {
     if (!service) return;
-    const res = await fetch(`/api/image/${service}`, { mode: "no-cors" });
+    const res = await fetch(API_ROOT + `/image/${service}`, { mode: "no-cors" });
     const r = await res.json();
     return r;
   }
@@ -80,7 +83,7 @@ function Randamu() {
 
   async function doLike() {
     if (!bg?.pixiv_id) return;
-    await fetch(`/api/image/pixiv/like?id=${bg.pixiv_id}`, { mode: "no-cors" });
+    await fetch(API_ROOT + `/image/pixiv/like?id=${bg.pixiv_id}`, { mode: "no-cors" });
     setLike(true)
   }
 
