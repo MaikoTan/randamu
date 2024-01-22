@@ -15,7 +15,7 @@ function Randamu() {
 
   useEffect(() => {
     const fetchConfig = async () => {
-      var resp = await fetch("/api/config", { mode: "no-cors" });
+      var resp = await fetch(API_ROOT + "/config", { mode: "no-cors" });
       var json = await resp.json();
 
       setService(json.service);
