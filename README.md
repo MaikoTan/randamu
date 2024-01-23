@@ -11,10 +11,13 @@ A simple python script to serve a webpage with random images, which can be used 
 
 ## Features
 
-- Press `N` or click page to switch to the next one without waiting.
-- Press `L` to bookmark the current image (only available on Pixiv and Lolicon, requires Pixiv Refresh Token to be set).
+- Press `N` or click the `➡️` emoji to switch to the next one without waiting.
+- Press `L` or click the `💙` emoji to bookmark the current image
+    - only available on Pixiv and Lolicon, requires Pixiv Refresh Token to be set.
 
 ## Usage
+
+- **Make sure you have [Git](https://git-scm.com) and [Docker](https://docker.com) installed**
 
 - Clone the repository
 
@@ -22,37 +25,15 @@ A simple python script to serve a webpage with random images, which can be used 
     git clone https://github.com/MaikoTan/randamu.git
     ```
 
-- Create virtual environment
+- Run the docker container
 
     ```bash
-    python -m venv venv
-    ```
-
-- Activate the virtual environment
-
-    ```bash
-    # Linux or macOS
-    source venv/bin/activate
-    # Windows
-    venv\Scripts\activate
-    ```
-
-- Install the requirements
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-- Run the script
-
-    ```bash
-    uvicorn main:app --reload --port 8089
-    # You could add `--host 0.0.0.0` to allow all IP addresses instead of `localhost`.
+    docker compose up -d
     ```
 
 - Set your wallpaper
 
-    Use `http://localhost:8089/` as the wallpaper webpage URL in your any supported wallpaper plugins.
+    Use `https://maikotan.github.io/randamu/` as the wallpaper webpage URL in your any supported wallpaper plugins.
 
     For example:
 
