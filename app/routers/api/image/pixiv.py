@@ -62,7 +62,7 @@ queue: PriorityQueue[PriorityEntry[Image]] = PriorityQueue()
 
 def _to_image(url: str, data: Dict[str, Any]) -> Image:
     return Image(
-        url=re.sub(r"^https://i.pximg.net", "/api/image/pixiv/proxy", url),
+        url=re.sub(r"^https://i.pximg.net", "/image/pixiv/proxy", url),
         # url=re.sub(r"^https://i.pximg.net", "https://i.pixiv.re", url),
         title=data["title"],
         author=data["user"]["name"],

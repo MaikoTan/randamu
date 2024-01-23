@@ -44,7 +44,7 @@ function Randamu() {
       setNextBg(r)
       // preload image
       if (!r.data_url)
-        new Image().src = r.url;
+        new Image().src = r.url?.startsWith('http') ? r.url : API_ROOT + r.url;
     });
   }
 
