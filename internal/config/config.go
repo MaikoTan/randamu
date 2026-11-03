@@ -52,35 +52,41 @@ type Config struct {
 	// MergeVariations combines the pages of one work into a single animated
 	// PNG when they look like variations of the same picture (差分), and
 	// removes the individual pages.
-	MergeVariations        bool     `json:"merge_variations"`
-	VariationMinSimilarity float64  `json:"variation_min_similarity"`
-	VariationDelayMS       int      `json:"variation_delay_ms"`
-	BlacklistTags          []string `json:"blacklist_tags"`
-	APIRequestsPerSecond   float64  `json:"api_requests_per_second"`
-	Sources                []Source `json:"sources"`
+	MergeVariations        bool    `json:"merge_variations"`
+	VariationMinSimilarity float64 `json:"variation_min_similarity"`
+	VariationDelayMS       int     `json:"variation_delay_ms"`
+	// VariationCharacterMatch also merges pages when the main character keeps
+	// the same clothing and hair colors in the same place, even if the
+	// background or framing changed. It ignores neutral background colors, so
+	// it still works when the face is hidden.
+	VariationCharacterMatch bool     `json:"variation_match_character"`
+	BlacklistTags           []string `json:"blacklist_tags"`
+	APIRequestsPerSecond    float64  `json:"api_requests_per_second"`
+	Sources                 []Source `json:"sources"`
 }
 
 // Default returns the built-in default configuration.
 func Default() *Config {
 	return &Config{
-		ImagesDir:              DefaultImagesDir(),
-		StateDir:               DefaultStateDir(),
-		Concurrency:            4,
-		MaxRetries:             3,
-		MaxPageCount:           10,
-		SkipAI:                 true,
-		SkipR18:                true,
-		SkipR18G:               true,
-		SkipQR:                 true,
-		SkipMosaic:             true,
-		SkipBlur:               true,
-		SkipPromoText:          true,
-		QRMinCoverage:          0.02,
-		MergeVariations:        true,
-		VariationMinSimilarity: 0.9,
-		VariationDelayMS:       1000,
-		BlacklistTags:          []string{"漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"},
-		APIRequestsPerSecond:   2,
+		ImagesDir:               DefaultImagesDir(),
+		StateDir:                DefaultStateDir(),
+		Concurrency:             4,
+		MaxRetries:              3,
+		MaxPageCount:            10,
+		SkipAI:                  true,
+		SkipR18:                 true,
+		SkipR18G:                true,
+		SkipQR:                  true,
+		SkipMosaic:              true,
+		SkipBlur:                true,
+		SkipPromoText:           true,
+		QRMinCoverage:           0.02,
+		MergeVariations:         true,
+		VariationMinSimilarity:  0.9,
+		VariationDelayMS:        1000,
+		VariationCharacterMatch: true,
+		BlacklistTags:           []string{"漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"},
+		APIRequestsPerSecond:    2,
 		Sources: []Source{
 			{Type: "bookmarks", Restrict: "public", Limit: 100},
 			{Type: "bookmarks", Restrict: "private", Limit: 100},

@@ -72,6 +72,7 @@ and the file overrides built-in defaults:
   "merge_variations": true,
   "variation_min_similarity": 0.9,
   "variation_delay_ms": 1000,
+  "variation_match_character": true,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
@@ -135,6 +136,12 @@ removed. Merging only happens when:
   at least `variation_min_similarity` (0.9 by default, range 0–1), or the
   central half correlates at least 0.97, which covers variations that repaint
   the background or change the framing while the subject stays in place.
+
+With `variation_match_character` enabled (the default), a page is also
+accepted when the main character keeps the same clothing and hair colors in
+the same place. It compares the saturated colors of the central subject and
+their spatial distribution, so it still works when the face is hidden;
+black-and-white pages have too little color for this check.
 
 Works that do not qualify — ordinary multi-page manga, several unrelated
 illustrations in one post — keep their page files untouched. The thresholds

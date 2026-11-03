@@ -436,7 +436,11 @@ func mergeVariations(cfg *config.Config, works map[int64][]string, logger *slog.
 		if !complete {
 			continue
 		}
-		if _, err := variation.Merge(cfg.ImagesDir, id, paths, delay, cfg.VariationMinSimilarity); err != nil {
+		opts := variation.Options{
+			MinSimilarity:  cfg.VariationMinSimilarity,
+			MatchCharacter: cfg.VariationCharacterMatch,
+		}
+		if _, err := variation.Merge(cfg.ImagesDir, id, paths, delay, opts); err != nil {
 			if errors.Is(err, variation.ErrNotVariation) {
 				logger.Debug("pages are not variations; keeping them", "illust", id, "reason", err)
 			} else {
