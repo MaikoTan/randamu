@@ -1,0 +1,99 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: "386", name: linux_x86 }
+          - { goos: linux, goarch: amd64, name: linux_x64 }
+          - { goos: linux, goarch: arm64, name: linux_aarch64 }
+          - { goos: linux, goarch: arm, goarm: "7", name: linux_armv7 }
+          - { goos: windows, goarch: "386", name: windows_x86 }
+          - { goos: windows, goarch: amd64, name: windows_x64 }
+          - { goos: windows, goarch: arm64, name: windows_aarch64 }
+          - { goos: darwin, goarch: amd64, name: macos_x64 }
+          - { goos: darwin, goarch: arm64, name: macos_aarch64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        # CGO is disabled so every binary is fully static. The Linux builds
+        # therefore run on both glibc and musl distributions and no separate
+        # libc variants are needed.
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          ext=""
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
+          mkdir -p "dist/${{ matrix.name }}"
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+            -o "dist/${{ matrix.name }}/randamu${ext}" .
+          cp README.md LICENSE "dist/${{ matrix.name }}/"
+          if [ "$GOOS" = "windows" ]; then
+            (cd dist && zip -qr "randamu_${version}_${{ matrix.name }}.zip" "${{ matrix.name }}")
+          else
+            tar -C dist -czf "dist/randamu_${version}_${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
+          fi
+          rm -rf "dist/${{ matrix.name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$VERSION" ./dist/* \
+            --title "randamu ${VERSION#v}" \
+            --generate-notes \
+            --verify-tag
