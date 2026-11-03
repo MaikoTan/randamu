@@ -12,6 +12,9 @@
   "skip_mosaic": true,
   "skip_blur": true,
   "qr_min_coverage": 0.02,
+  "merge_variations": true,
+  "variation_min_similarity": 0.9,
+  "variation_delay_ms": 1000,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },

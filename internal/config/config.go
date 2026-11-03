@@ -44,29 +44,38 @@ type Config struct {
 	SkipBlur   bool `json:"skip_blur"`
 	// QRMinCoverage is the share of the image a QR code must cover before
 	// the image is rejected (default 0.02).
-	QRMinCoverage        float64  `json:"qr_min_coverage"`
-	BlacklistTags        []string `json:"blacklist_tags"`
-	APIRequestsPerSecond float64  `json:"api_requests_per_second"`
-	Sources              []Source `json:"sources"`
+	QRMinCoverage float64 `json:"qr_min_coverage"`
+	// MergeVariations combines the pages of one work into a single animated
+	// PNG when they look like variations of the same picture (差分), and
+	// removes the individual pages.
+	MergeVariations        bool     `json:"merge_variations"`
+	VariationMinSimilarity float64  `json:"variation_min_similarity"`
+	VariationDelayMS       int      `json:"variation_delay_ms"`
+	BlacklistTags          []string `json:"blacklist_tags"`
+	APIRequestsPerSecond   float64  `json:"api_requests_per_second"`
+	Sources                []Source `json:"sources"`
 }
 
 // Default returns the built-in default configuration.
 func Default() *Config {
 	return &Config{
-		ImagesDir:            DefaultImagesDir(),
-		StateDir:             DefaultStateDir(),
-		Concurrency:          4,
-		MaxRetries:           3,
-		MaxPageCount:         10,
-		SkipAI:               true,
-		SkipR18:              true,
-		SkipR18G:             true,
-		SkipQR:               true,
-		SkipMosaic:           true,
-		SkipBlur:             true,
-		QRMinCoverage:        0.02,
-		BlacklistTags:        []string{"漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"},
-		APIRequestsPerSecond: 2,
+		ImagesDir:              DefaultImagesDir(),
+		StateDir:               DefaultStateDir(),
+		Concurrency:            4,
+		MaxRetries:             3,
+		MaxPageCount:           10,
+		SkipAI:                 true,
+		SkipR18:                true,
+		SkipR18G:               true,
+		SkipQR:                 true,
+		SkipMosaic:             true,
+		SkipBlur:               true,
+		QRMinCoverage:          0.02,
+		MergeVariations:        true,
+		VariationMinSimilarity: 0.9,
+		VariationDelayMS:       1000,
+		BlacklistTags:          []string{"漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"},
+		APIRequestsPerSecond:   2,
 		Sources: []Source{
 			{Type: "bookmarks", Restrict: "public", Limit: 100},
 			{Type: "bookmarks", Restrict: "private", Limit: 100},
@@ -144,8 +153,14 @@ func (c *Config) Validate() error {
 	if c.APIRequestsPerSecond <= 0 {
 		c.APIRequestsPerSecond = 2
 	}
+	if c.VariationMinSimilarity <= 0 || c.VariationMinSimilarity > 1 {
+		c.VariationMinSimilarity = 0.9
+	}
 	if c.QRMinCoverage <= 0 || c.QRMinCoverage > 1 {
 		c.QRMinCoverage = 0.02
+	}
+	if c.VariationDelayMS <= 0 {
+		c.VariationDelayMS = 1000
 	}
 	for i := range c.Sources {
 		s := &c.Sources[i]

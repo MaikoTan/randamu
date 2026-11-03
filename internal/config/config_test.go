@@ -69,6 +69,19 @@ func TestContentAnalysisDefaults(t *testing.T) {
 	}
 }
 
+func TestVariationDefaults(t *testing.T) {
+	cfg := Default()
+	cfg.VariationMinSimilarity = 0
+	cfg.VariationDelayMS = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !cfg.MergeVariations || cfg.VariationMinSimilarity != 0.9 || cfg.VariationDelayMS != 1000 {
+		t.Fatalf("variation defaults not restored: %+v",
+			[]any{cfg.MergeVariations, cfg.VariationMinSimilarity, cfg.VariationDelayMS})
+	}
+}
+
 func TestApplyEnv(t *testing.T) {
 	t.Setenv("RANDAMU_IMAGES_DIR", "/tmp/images")
 	t.Setenv("RANDAMU_STATE_DIR", "/tmp/state")

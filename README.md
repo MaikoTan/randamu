@@ -16,6 +16,7 @@ This replaces the old Python/FastAPI random-wallpaper service.
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
 - Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
+- Multi-page variations (差分) are merged into one looping animated PNG (APNG)
 
 ## Requirements
 
@@ -67,6 +68,9 @@ and the file overrides built-in defaults:
   "skip_mosaic": true,
   "skip_blur": true,
   "qr_min_coverage": 0.02,
+  "merge_variations": true,
+  "variation_min_similarity": 0.9,
+  "variation_delay_ms": 1000,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
@@ -109,6 +113,28 @@ Analysis runs once per downloaded file and never re-downloads: rejected
 illust ids are remembered in `state.json` and skipped on later runs.
 Undecodable formats (e.g. WebP, which the Go standard library cannot read)
 are kept unchanged.
+
+### Variation merging (差分)
+
+With `merge_variations` enabled (the default), the pages of one work are
+merged into a single looping APNG (`{id}.png`, one frame per page,
+`variation_delay_ms` apart, 1000 ms by default) and the individual pages are
+removed. Merging only happens when:
+
+- every page decoded successfully,
+- all pages have the same pixel size, and
+- every page resembles the first one with a luma correlation of at least
+  `variation_min_similarity` (0.9 by default, range 0–1).
+
+Works that do not qualify — ordinary multi-page manga, several unrelated
+illustrations in one post — keep their page files untouched. The threshold is
+a normalized cross-correlation, so variations that recolor or restyle parts
+of the picture still merge, while different compositions do not.
+
+A merged APNG is detected on later runs and skipped, so its pages are never
+downloaded again. APNG stores every frame at full resolution, so the merged
+file is roughly the size of all its pages together. WebP pages cannot be
+decoded by the Go standard library and are never merged.
 
 ### Token sources
 

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/MaikoTan/randamu/internal/analyze"
 	"github.com/MaikoTan/randamu/internal/config"
@@ -22,6 +23,7 @@ import (
 	"github.com/MaikoTan/randamu/internal/filter"
 	"github.com/MaikoTan/randamu/internal/pixiv"
 	"github.com/MaikoTan/randamu/internal/state"
+	"github.com/MaikoTan/randamu/internal/variation"
 )
 
 // version is injected at build time via ldflags.
@@ -253,6 +255,9 @@ func runSource(
 		}
 
 		var jobs []download.Job
+		// pageNames tracks the files of each multi-page work so they can be
+		// merged into one APNG after this page of jobs completes.
+		pageNames := make(map[int64][]string)
 		for _, illust := range page.Illusts {
 			if processed >= src.Limit {
 				break
@@ -269,12 +274,22 @@ func runSource(
 				logger.Debug("skipping previously rejected work", "id", illust.ID, "source", key)
 				continue
 			}
+			if cfg.MergeVariations {
+				if _, err := os.Stat(filepath.Join(cfg.ImagesDir, fmt.Sprintf("%d.png", illust.ID))); err == nil {
+					logger.Debug("skipping merged work", "id", illust.ID, "source", key)
+					continue
+				}
+			}
+			var names []string
+			complete := true
 			for pageIdx, rawURL := range filter.OriginalURLs(illust) {
 				name, err := download.FileName(illust.ID, pageIdx, rawURL)
 				if err != nil {
 					logger.Warn("cannot derive file name", "id", illust.ID, "error", err)
+					complete = false
 					continue
 				}
+				names = append(names, name)
 				jobs = append(jobs, download.Job{
 					URL:      rawURL,
 					Filename: name,
@@ -283,9 +298,15 @@ func runSource(
 					Page:     pageIdx,
 				})
 			}
+			if complete && len(names) > 1 {
+				pageNames[illust.ID] = names
+			}
 		}
 
 		pageFailures := runJobs(ctx, d, jobs, cfg.Concurrency, logger, dryRun, st)
+		if cfg.MergeVariations && !dryRun {
+			mergeVariations(cfg, pageNames, logger)
+		}
 		failures += pageFailures
 		if pageFailures > 0 {
 			// Page barrier: not every job on this page finished, so the cursor does not advance.
@@ -377,6 +398,42 @@ func runJobs(ctx context.Context, d *download.Downloader, jobs []download.Job, w
 	}()
 	wg.Wait()
 	return failures
+}
+
+// mergeVariations combines the downloaded pages of each work that look like
+// variations of one picture (差分) into a single looping APNG, then removes
+// the individual pages. Works whose pages failed, were rejected or do not
+// resemble each other keep their page files untouched.
+func mergeVariations(cfg *config.Config, works map[int64][]string, logger *slog.Logger) {
+	delay := time.Duration(cfg.VariationDelayMS) * time.Millisecond
+	for id, names := range works {
+		final := filepath.Join(cfg.ImagesDir, fmt.Sprintf("%d.png", id))
+		if _, err := os.Stat(final); err == nil {
+			continue
+		}
+		paths := make([]string, 0, len(names))
+		complete := true
+		for _, name := range names {
+			p := filepath.Join(cfg.ImagesDir, name)
+			if _, err := os.Stat(p); err != nil {
+				complete = false
+				break
+			}
+			paths = append(paths, p)
+		}
+		if !complete {
+			continue
+		}
+		if _, err := variation.Merge(cfg.ImagesDir, id, paths, delay, cfg.VariationMinSimilarity); err != nil {
+			if errors.Is(err, variation.ErrNotVariation) {
+				logger.Debug("pages are not variations; keeping them", "illust", id, "reason", err)
+			} else {
+				logger.Warn("cannot merge variations", "illust", id, "error", err)
+			}
+			continue
+		}
+		logger.Info("merged variations into APNG", "illust", id, "pages", len(paths), "file", final)
+	}
 }
 
 func filterSources(all []config.Source, want []string) []config.Source {
