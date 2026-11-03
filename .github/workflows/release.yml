@@ -12,11 +12,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
       - run: go test ./...
 
   build:
@@ -36,11 +36,11 @@ jobs:
           - { goos: darwin, goarch: amd64, name: macos_x64 }
           - { goos: darwin, goarch: arm64, name: macos_aarch64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
       - name: Build
         # CGO is disabled so every binary is fully static. The Linux builds
         # therefore run on both glibc and musl distributions and no separate
@@ -68,7 +68,7 @@ jobs:
             tar -C dist -czf "dist/randamu_${version}_${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
           fi
           rm -rf "dist/${{ matrix.name }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: dist/*
@@ -78,7 +78,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
