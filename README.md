@@ -7,7 +7,6 @@ A simple python script to serve a webpage with random images, which can be used 
 - [x] [Pixiv](https://pixiv.net/) via [pixivpy_async](https://github.com/Mikubill/pixivpy-async)
     - You need to get your own refresh token from Pixiv, see [this guide](https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362) for details.
 - [x] [Lolicon setu API](https://api.lolicon.app/#/setu)
-- [x] [Stable Horde](https://stablehorde.net/)
 
 ## Features
 
