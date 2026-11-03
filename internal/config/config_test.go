@@ -82,6 +82,16 @@ func TestVariationDefaults(t *testing.T) {
 	}
 }
 
+func TestPromoDefaults(t *testing.T) {
+	cfg := Default()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !cfg.SkipPromoText {
+		t.Fatal("skip_promo_text must be enabled by default")
+	}
+}
+
 func TestApplyEnv(t *testing.T) {
 	t.Setenv("RANDAMU_IMAGES_DIR", "/tmp/images")
 	t.Setenv("RANDAMU_STATE_DIR", "/tmp/state")

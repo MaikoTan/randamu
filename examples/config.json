@@ -11,6 +11,7 @@
   "skip_qr": true,
   "skip_mosaic": true,
   "skip_blur": true,
+  "skip_promo_text": true,
   "qr_min_coverage": 0.02,
   "merge_variations": true,
   "variation_min_similarity": 0.9,

@@ -22,6 +22,7 @@ import (
 	"github.com/MaikoTan/randamu/internal/download"
 	"github.com/MaikoTan/randamu/internal/filter"
 	"github.com/MaikoTan/randamu/internal/pixiv"
+	"github.com/MaikoTan/randamu/internal/promo"
 	"github.com/MaikoTan/randamu/internal/state"
 	"github.com/MaikoTan/randamu/internal/variation"
 )
@@ -133,7 +134,7 @@ func run() int {
 		HTTPClient:  httpClient,
 		Logger:      logger,
 	}
-	if cfg.SkipQR || cfg.SkipMosaic || cfg.SkipBlur {
+	if cfg.SkipQR || cfg.SkipMosaic || cfg.SkipBlur || cfg.SkipPromoText {
 		analyzeOpts := analyze.Options{
 			QR:            cfg.SkipQR,
 			Mosaic:        cfg.SkipMosaic,
@@ -149,6 +150,17 @@ func run() int {
 			}
 			if res.Skip {
 				return errors.New(res.Reason)
+			}
+			if cfg.SkipPromoText {
+				kw, err := promo.Scan(path, promo.DefaultKeywords)
+				switch {
+				case errors.Is(err, promo.ErrUnavailable):
+					logger.Debug("promo text check skipped: tesseract not in PATH", "file", path)
+				case err != nil:
+					logger.Debug("promo text check failed", "file", path, "error", err)
+				case kw != "":
+					return fmt.Errorf("promotional text mentions %q", kw)
+				}
 			}
 			return nil
 		}

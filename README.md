@@ -67,6 +67,7 @@ and the file overrides built-in defaults:
   "skip_qr": true,
   "skip_mosaic": true,
   "skip_blur": true,
+  "skip_promo_text": true,
   "qr_min_coverage": 0.02,
   "merge_variations": true,
   "variation_min_similarity": 0.9,
@@ -94,8 +95,9 @@ Environment variables: `PIXIV_REFRESH_TOKEN`, `RANDAMU_CONFIG`, `RANDAMU_IMAGES_
 
 ### Content analysis
 
-The `skip_qr`, `skip_mosaic` and `skip_blur` options (all on by default)
-reject images that are not usable illustrations. The checks are pure Go:
+The `skip_qr`, `skip_mosaic`, `skip_blur` and `skip_promo_text` options (all
+on by default) reject images that are not usable illustrations. The pixel
+checks are pure Go; the optional promo-text check shells out to `tesseract`:
 
 - **QR poster** — scans for QR finder patterns (the 1:1:3:1:1 corner squares)
   at a higher resolution than the other checks and rejects the image when the
@@ -108,6 +110,12 @@ reject images that are not usable illustrations. The checks are pure Go:
 - **Full-image blur** — rejects the image when almost no pixel carries a
   sharp edge, the signature of a teaser that only exists to push viewers to
   a paid site (Fanbox, Fantia, …).
+- **Promo text** — with `skip_promo_text` (on by default), OCRs the image
+  with the optional `tesseract` binary and rejects pages whose overlaid text
+  mentions Fanbox, Fantia, Patreon, DLsite, Gumroad, BOOTH, ci-en, Ko-fi or
+  Afdian. When `tesseract` is not in `PATH` the check is skipped and the
+  image is kept; add it with
+  `services.randamu.extraPackages = [ pkgs.tesseract ];`.
 
 Analysis runs once per downloaded file and never re-downloads: rejected
 illust ids are remembered in `state.json` and skipped on later runs.

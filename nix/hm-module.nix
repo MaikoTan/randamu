@@ -77,6 +77,16 @@ in
       default = [ ];
       description = "Extra command line arguments passed to randamu.";
     };
+
+    extraPackages = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      default = [ ];
+      example = lib.literalExpression "[ pkgs.tesseract ]";
+      description = ''
+        Extra packages placed on the service PATH. Add pkgs.tesseract to
+        enable the skip_promo_text OCR check.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -98,7 +108,8 @@ in
         Environment = [
           "RANDAMU_IMAGES_DIR=${cfg.imagesDir}"
           "RANDAMU_STATE_DIR=${cfg.stateDir}"
-        ] ++ lib.optional (cfg.proxy != null) "RANDAMU_PROXY=${cfg.proxy}";
+        ] ++ lib.optional (cfg.proxy != null) "RANDAMU_PROXY=${cfg.proxy}"
+          ++ lib.optional (cfg.extraPackages != [ ]) "PATH=${lib.makeBinPath cfg.extraPackages}";
         EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
         LoadCredential = lib.optional (cfg.refreshTokenFile != null)
           "pixiv_refresh_token:${cfg.refreshTokenFile}";

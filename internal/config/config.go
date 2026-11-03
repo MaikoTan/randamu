@@ -42,6 +42,10 @@ type Config struct {
 	SkipQR     bool `json:"skip_qr"`
 	SkipMosaic bool `json:"skip_mosaic"`
 	SkipBlur   bool `json:"skip_blur"`
+	// SkipPromoText rejects pages whose overlaid text advertises a paid site
+	// (Fanbox, Fantia, ...). It uses the optional tesseract binary and is
+	// skipped when tesseract is not in PATH.
+	SkipPromoText bool `json:"skip_promo_text"`
 	// QRMinCoverage is the share of the image a QR code must cover before
 	// the image is rejected (default 0.02).
 	QRMinCoverage float64 `json:"qr_min_coverage"`
@@ -70,6 +74,7 @@ func Default() *Config {
 		SkipQR:                 true,
 		SkipMosaic:             true,
 		SkipBlur:               true,
+		SkipPromoText:          true,
 		QRMinCoverage:          0.02,
 		MergeVariations:        true,
 		VariationMinSimilarity: 0.9,
