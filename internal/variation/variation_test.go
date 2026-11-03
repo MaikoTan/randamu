@@ -82,6 +82,55 @@ func TestMergeVariations(t *testing.T) {
 	}
 }
 
+func TestMergeMatchesCentralSubject(t *testing.T) {
+	dir := t.TempDir()
+	p0 := filepath.Join(dir, "77_p0.png")
+	p1 := filepath.Join(dir, "77_p1.png")
+	const w, h = 400, 300
+	center := func(x, y int) color.NRGBA {
+		if x*2+y*3 < 600 {
+			return color.NRGBA{R: 30, G: 30, B: 30, A: 255}
+		}
+		return color.NRGBA{R: 220, G: 200, B: 180, A: 255}
+	}
+	inside := func(x, y int) bool { return x >= 100 && x < 300 && y >= 75 && y < 225 }
+	// The same subject sits in the same central area, but the background is
+	// repainted (a vertical vs horizontal split), as in a wide variation.
+	writePNG(t, p0, w, h, func(x, y int) color.NRGBA {
+		if inside(x, y) {
+			return center(x, y)
+		}
+		if x < w/2 {
+			return color.NRGBA{R: 255, A: 255}
+		}
+		return color.NRGBA{A: 255}
+	})
+	writePNG(t, p1, w, h, func(x, y int) color.NRGBA {
+		if inside(x, y) {
+			return center(x, y)
+		}
+		if y < h/2 {
+			return color.NRGBA{R: 255, A: 255}
+		}
+		return color.NRGBA{A: 255}
+	})
+
+	img0, err := decodeFile(p0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img1, err := decodeFile(p1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full := correlation(lumaGrid(img0), lumaGrid(img1)); full >= 0.9 {
+		t.Fatalf("test precondition: full similarity %.3f must be below the threshold", full)
+	}
+	if _, err := Merge(dir, 77, []string{p0, p1}, time.Second, 0.9); err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+}
+
 func TestMergeRejectsDifferentPictures(t *testing.T) {
 	dir := t.TempDir()
 	p0 := filepath.Join(dir, "7_p0.png")

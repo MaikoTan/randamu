@@ -131,13 +131,15 @@ removed. Merging only happens when:
 
 - every page decoded successfully,
 - all pages have the same pixel size, and
-- every page resembles the first one with a luma correlation of at least
-  `variation_min_similarity` (0.9 by default, range 0–1).
+- every page resembles the first one: either the overall luma correlation is
+  at least `variation_min_similarity` (0.9 by default, range 0–1), or the
+  central half correlates at least 0.97, which covers variations that repaint
+  the background or change the framing while the subject stays in place.
 
 Works that do not qualify — ordinary multi-page manga, several unrelated
-illustrations in one post — keep their page files untouched. The threshold is
-a normalized cross-correlation, so variations that recolor or restyle parts
-of the picture still merge, while different compositions do not.
+illustrations in one post — keep their page files untouched. The thresholds
+are normalized cross-correlations, so variations that recolor or restyle
+parts of the picture still merge, while sequential manga pages do not.
 
 A merged APNG is detected on later runs and skipped, so its pages are never
 downloaded again. APNG stores every frame at full resolution, so the merged

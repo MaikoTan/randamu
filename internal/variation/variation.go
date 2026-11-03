@@ -45,10 +45,15 @@ func Merge(dir string, id int64, pages []string, delay time.Duration, minSimilar
 		frames = append(frames, img)
 	}
 	first := lumaGrid(frames[0])
+	firstCenter := lumaGridRect(frames[0], centerRect(frames[0].Bounds()))
 	for i := 1; i < len(frames); i++ {
-		if sim := correlation(first, lumaGrid(frames[i])); sim < minSimilarity {
-			return "", fmt.Errorf("%w: page %d similarity %.3f < %.3f",
-				ErrNotVariation, i, sim, minSimilarity)
+		full := correlation(first, lumaGrid(frames[i]))
+		center := correlation(firstCenter, lumaGridRect(frames[i], centerRect(frames[i].Bounds())))
+		// A variation may repaint the background or move the framing while the
+		// subject stays put, so a near-identical central area is enough.
+		if full < minSimilarity && center < centerMinSimilarity {
+			return "", fmt.Errorf("%w: page %d similarity %.3f (center %.3f) below threshold",
+				ErrNotVariation, i, full, center)
 		}
 	}
 
@@ -98,10 +103,28 @@ func decodeFile(path string) (image.Image, error) {
 // cheap enough to run on full-size originals.
 const gridSide = 64
 
+// centerMinSimilarity is the correlation required for the central half of two
+// pages. Variations that change the background or crop differently still keep
+// the subject in place, while sequential manga pages do not.
+const centerMinSimilarity = 0.97
+
+// centerRect returns the central half of b.
+func centerRect(b image.Rectangle) image.Rectangle {
+	dx, dy := b.Dx()/4, b.Dy()/4
+	if dx == 0 || dy == 0 {
+		return b
+	}
+	return image.Rect(b.Min.X+dx, b.Min.Y+dy, b.Max.X-dx, b.Max.Y-dy)
+}
+
 // lumaGrid downsamples the image into a gridSide×gridSide luma grid by box
 // averaging, so small shifts and compression noise do not matter.
 func lumaGrid(img image.Image) []float64 {
-	b := img.Bounds()
+	return lumaGridRect(img, img.Bounds())
+}
+
+// lumaGridRect is lumaGrid over one rectangle of the image.
+func lumaGridRect(img image.Image, b image.Rectangle) []float64 {
 	w, h := b.Dx(), b.Dy()
 	grid := make([]float64, gridSide*gridSide)
 	for gy := 0; gy < gridSide; gy++ {
