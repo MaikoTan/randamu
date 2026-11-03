@@ -30,8 +30,8 @@ jobs:
           - { goos: linux, goarch: amd64, name: linux_x64 }
           - { goos: linux, goarch: arm64, name: linux_aarch64 }
           - { goos: linux, goarch: arm, goarm: "7", name: linux_armv7 }
-          - { goos: windows, goarch: "386", name: windows_x86 }
-          - { goos: windows, goarch: amd64, name: windows_x64 }
+          - { goos: windows, goarch: "386", name: windows_x86, tess: "w32 5.3.0.20221222", tess_hash: "33d7824a440e1660b74dc55f10355b346a22fdbe430143f7f6885cfa3cfdf7e7" }
+          - { goos: windows, goarch: amd64, name: windows_x64, tess: "w64 5.4.0.20240606", tess_hash: "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9" }
           - { goos: windows, goarch: arm64, name: windows_aarch64 }
           - { goos: darwin, goarch: amd64, name: macos_x64 }
           - { goos: darwin, goarch: arm64, name: macos_aarch64 }
@@ -53,6 +53,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils
           version="${VERSION#v}"
           ext=""
           if [ "$GOOS" = "windows" ]; then
@@ -62,6 +63,35 @@ jobs:
           go build -trimpath -ldflags "-s -w -X main.version=${version}" \
             -o "dist/${{ matrix.name }}/randamu${ext}" .
           cp README.md LICENSE "dist/${{ matrix.name }}/"
+          # Windows x64/x86 ship a bundled tesseract (with its DLL dependency
+          # closure and the English model) so skip_promo_text works without
+          # installing anything. There is no official Windows arm64 build,
+          # so that archive relies on tesseract in PATH.
+          if [ -n "${{ matrix.tess }}" ]; then
+            set -- ${{ matrix.tess }}   # tess: "<arch> <version>"
+            installer="/tmp/tesseract-$1.exe"
+            curl -fsSL -o "$installer" \
+              "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-$1-setup-$2.exe"
+            echo "${{ matrix.tess_hash }}  $installer" | sha256sum -c -
+            # The installer is an NSIS archive; 7z extracts it without running it.
+            mkdir /tmp/tesseract
+            7z x -o/tmp/tesseract "$installer" > /dev/null
+            # Drop the ~160MB of unrelated tooling the installer carries and
+            # keep only the DLLs tesseract.exe loads, directly or transitively.
+            python3 .github/scripts/prune_tesseract.py /tmp/tesseract
+            # Strip debug symbols: shrinks the bundle ~5x, imports untouched.
+            for f in /tmp/tesseract/tesseract.exe /tmp/tesseract/*.dll; do
+              objcopy --strip-all "$f"
+            done
+            bundle="dist/${{ matrix.name }}/tesseract"
+            cp THIRD-PARTY-NOTICES.md "dist/${{ matrix.name }}/"
+            mkdir -p "$bundle/tessdata"
+            cp /tmp/tesseract/tesseract.exe /tmp/tesseract/*.dll "$bundle/"
+            cp /tmp/tesseract/tessdata/eng.traineddata "$bundle/tessdata/"
+            cp -r /tmp/tesseract/tessdata/configs "$bundle/tessdata/"
+            cp /tmp/tesseract/doc/LICENSE "$bundle/LICENSE"
+            rm -rf /tmp/tesseract "$installer"
+          fi
           if [ "$GOOS" = "windows" ]; then
             (cd dist && zip -qr "randamu_${version}_${{ matrix.name }}.zip" "${{ matrix.name }}")
           else

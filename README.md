@@ -23,6 +23,9 @@ This replaces the old Python/FastAPI random-wallpaper service.
 - Go 1.24+ (or Nix)
 - A pixiv refresh token
 - Optional: a proxy if pixiv is unreachable from your network
+- Optional: `tesseract` for the promo-text check. The Windows x64/x86 release
+  archives already include it under `tesseract/`; the Windows arm64 archive and
+  the Linux/macOS archives look for it in `PATH`
 
 ## Getting a refresh token
 
@@ -114,8 +117,10 @@ checks are pure Go; the optional promo-text check shells out to `tesseract`:
 - **Promo text** — with `skip_promo_text` (on by default), OCRs the image
   with the optional `tesseract` binary and rejects pages whose overlaid text
   mentions Fanbox, Fantia, Patreon, DLsite, Gumroad, BOOTH, ci-en, Ko-fi or
-  Afdian. When `tesseract` is not in `PATH` the check is skipped and the
-  image is kept; add it with
+  Afdian. The Windows x64 and x86 release archives bundle tesseract, so the
+  check works there without installing anything. Elsewhere, when `tesseract`
+  is not in `PATH` (and not bundled next to the executable) the check is
+  skipped and the image is kept; add it with
   `services.randamu.extraPackages = [ pkgs.tesseract ];`.
 
 Analysis runs once per downloaded file and never re-downloads: rejected
@@ -273,4 +278,6 @@ go test -race ./...
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The Windows x64/x86 release archives bundle Tesseract OCR;
+see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for its components and
+licenses.
