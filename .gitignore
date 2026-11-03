@@ -1,19 +1,20 @@
-__pycache__/
-images/
-venv/
-env/
+# Build artifacts
+/result
+/result-*
+/randamu
+*.part
 
-config.json
-config.yaml
+# Go
+/vendor/
 
+# Local configuration and secrets
+config.local.json
+.env
+
+# Editors and tools
 .vscode/
+.idea/
+.direnv/
 
-node_modules/
-package-lock.json
-yarn.lock
-.yarn/
-
-cert/
-
-/user/*
-!/user/README.md
+# Runtime state
+state.json

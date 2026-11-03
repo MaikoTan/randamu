@@ -1,0 +1,24 @@
+{
+  "images_dir": "~/.local/share/randamu/images",
+  "state_dir": "~/.local/state/randamu",
+  "proxy": "",
+  "concurrency": 4,
+  "max_retries": 3,
+  "max_page_count": 10,
+  "skip_ai": true,
+  "skip_r18": true,
+  "skip_r18g": true,
+  "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
+  "sources": [
+    { "type": "bookmarks", "restrict": "public", "limit": 100 },
+    { "type": "bookmarks", "restrict": "private", "limit": 100 },
+    {
+      "type": "search",
+      "tag": "拘束",
+      "search_target": "exact_match_for_tags",
+      "sort": "popular_desc",
+      "limit": 100
+    },
+    { "type": "recommended", "limit": 100 }
+  ]
+}

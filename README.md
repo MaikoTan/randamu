@@ -1,49 +1,206 @@
 # Randamu
 
-A simple python script to serve a webpage with random images, which can be used as wallpaper.
+A single-binary, idempotent pixiv image fetcher. It periodically downloads images
+from your bookmarks, tag searches and the recommendation feed into a local
+directory, so a wallpaper tool can simply pick a random file from disk.
 
-## Supported Services
-
-- [x] [Pixiv](https://pixiv.net/) via [pixivpy_async](https://github.com/Mikubill/pixivpy-async)
-    - You need to get your own refresh token from Pixiv, see [this guide](https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362) for details.
-- [x] [Lolicon setu API](https://api.lolicon.app/#/setu)
+This replaces the old Python/FastAPI random-wallpaper service.
 
 ## Features
 
-- Press `N` or click the `➡️` emoji to switch to the next one without waiting.
-- Press `L` or click the `💙` emoji to bookmark the current image
-    - only available on Pixiv and Lolicon, requires Pixiv Refresh Token to be set.
+- Sources: public bookmarks, private bookmarks, tag search and the recommended feed
+- Idempotent: files are named after the illust id, so re-runs skip everything already downloaded
+- Reliable downloads: bounded concurrency, retries with backoff, `Range` resume for partial files
+- Optional proxy support (`http`, `https`, `socks5`)
+- Zero third-party Go dependencies — one static binary, low memory
+- systemd timer integration through the bundled NixOS and home-manager modules
+- Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
+
+## Requirements
+
+- Go 1.24+ (or Nix)
+- A pixiv refresh token
+- Optional: a proxy if pixiv is unreachable from your network
+
+## Getting a refresh token
+
+Follow [this guide](https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362).
+Never commit the token to the repository — pass it through the environment or a
+systemd credential.
+
+## Build
+
+```bash
+nix build            # ./result/bin/randamu
+# or
+go build -trimpath -o randamu .
+```
 
 ## Usage
 
-- **Make sure you have [Git](https://git-scm.com) and [Docker](https://docker.com) installed**
+```bash
+export PIXIV_REFRESH_TOKEN="..."
+randamu --config examples/config.json
+```
 
-- Clone the repository
+A one-shot run downloads at most `limit` works per source and exits. Schedule it
+with cron, a systemd timer (see below), or run it manually.
 
-    ```bash
-    git clone https://github.com/MaikoTan/randamu.git
-    ```
+### Configuration
 
-- Run the docker container
+Configuration is JSON. CLI flags and environment variables override the file,
+and the file overrides built-in defaults:
 
-    ```bash
-    docker compose up -d
-    ```
+```json
+{
+  "images_dir": "~/.local/share/randamu/images",
+  "state_dir": "~/.local/state/randamu",
+  "proxy": "",
+  "concurrency": 4,
+  "max_retries": 3,
+  "max_page_count": 10,
+  "skip_ai": true,
+  "skip_r18": true,
+  "skip_r18g": true,
+  "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
+  "sources": [
+    { "type": "bookmarks", "restrict": "public", "limit": 100 },
+    { "type": "bookmarks", "restrict": "private", "limit": 100 },
+    {
+      "type": "search",
+      "tag": "拘束",
+      "search_target": "exact_match_for_tags",
+      "sort": "popular_desc",
+      "limit": 100
+    },
+    { "type": "recommended", "limit": 100 }
+  ]
+}
+```
 
-- Set your wallpaper
+Config path resolution: `--config` > `$RANDAMU_CONFIG` > `$XDG_CONFIG_HOME/randamu/config.json`.
 
-    Use `https://maikotan.github.io/randamu/` as the wallpaper webpage URL in your any supported wallpaper plugins.
+Environment variables: `PIXIV_REFRESH_TOKEN`, `RANDAMU_CONFIG`, `RANDAMU_IMAGES_DIR`,
+`RANDAMU_STATE_DIR`, `RANDAMU_PROXY`.
 
-    For example:
+### Token sources
 
-    - Linux (KDE): Use Plasma Wallpaper Plugin [HTML Wallpaper](https://store.kde.org/p/1324580)
-    - Windows: [Lively Wallpaper](https://www.rocksdanister.com/lively/)
-    - macOS: [Plash](https://sindresorhus.com/plash)
+Tried in order:
 
-## Work in Progress
+1. `--refresh-token-file <path>`
+2. `PIXIV_REFRESH_TOKEN`
+3. `$CREDENTIALS_DIRECTORY/pixiv_refresh_token` (systemd `LoadCredential`)
+4. `<state_dir>/refresh_token` (rotated token from a previous run)
 
-Since I am not familiar with Python, this project is not guaranteed to be well written.
+If pixiv rotates the refresh token, the new value is written atomically to the
+state directory with mode `0600`.
+
+### CLI
+
+```
+--config PATH               config file
+--images-dir PATH           override download directory
+--state-dir PATH            override state directory
+--proxy URL                 proxy for API and image requests
+--concurrency N             parallel downloads
+--refresh-token-file PATH   file containing the refresh token
+--source TYPE               only run this source type (repeatable)
+--dry-run                   list what would be downloaded, write nothing
+--log-level LEVEL           debug|info|warn|error
+--version
+```
+
+Exit codes: `0` success (including skips), `1` fatal, `2` invalid config,
+`3` authentication failure, `4` one or more downloads failed after retries.
+
+## Idempotency
+
+- The final filename is the basename of the original pixiv URL
+  (`{illust_id}_p{n}.{ext}`), so existing files are skipped with a single `stat`.
+  Files downloaded by the old fish/aria2c script are recognized.
+- Downloads are written to `<name>.part` and atomically renamed on success.
+  Interrupted transfers resume with an HTTP `Range` request on the next run.
+- Per-source cursors live in `<state_dir>/state.json`; a page's cursor only
+  advances after every job from that page completed or was permanently skipped.
+- State loss is safe: downloads are deduplicated by filename.
+
+### State directory
+
+| File | Purpose |
+|---|---|
+| `state.json` | pagination cursors, recommended offset, recently viewed ids |
+| `refresh_token` | rotated refresh token (mode `0600`) |
+| `lock` | prevents overlapping runs |
+
+## NixOS module
+
+```nix
+{
+  inputs.randamu.url = "github:MaikoTan/randamu";
+
+  # in a NixOS configuration:
+  imports = [ inputs.randamu.nixosModules.default ];
+
+  sops.secrets."pixiv/refresh_token" = { };
+
+  services.randamu = {
+    enable = true;
+    refreshTokenFile = config.sops.secrets."pixiv/refresh_token".path;
+    settings = {
+      sources = [
+        { type = "bookmarks"; restrict = "public"; limit = 100; }
+        { type = "recommended"; limit = 100; }
+      ];
+    };
+  };
+}
+```
+
+Defaults: user/group `randamu`, images in `/var/lib/randamu/images`, state in
+`/var/lib/randamu`, timer runs `daily` with a randomized delay of one hour.
+
+## home-manager module
+
+```nix
+{
+  imports = [ inputs.randamu.homeManagerModules.default ];
+
+  sops.secrets."pixiv/refresh_token" = { };
+
+  services.randamu = {
+    enable = true;
+    refreshTokenFile = config.sops.secrets."pixiv/refresh_token".path;
+    settings.sources = [
+      { type = "bookmarks"; restrict = "public"; limit = 100; }
+      { type = "recommended"; limit = 100; }
+    ];
+  };
+}
+```
+
+Defaults: images in `$XDG_DATA_HOME/randamu/images`, state in
+`$XDG_STATE_HOME/randamu`, user-level systemd timer running `daily`.
+
+Common module options: `imagesDir`, `stateDir`, `configFile`, `settings`,
+`refreshTokenFile`, `environmentFile`, `proxy`, `onCalendar`,
+`randomizedDelaySec`, `extraArgs`.
+
+## Development
+
+```bash
+nix develop
+go vet ./...
+go test -race ./...
+```
+
+## Security
+
+- The refresh token is read from the environment or a systemd credential, never
+  from the JSON config.
+- Image downloads are restricted to `https://i.pximg.net`, and pagination
+  cursors are restricted to the pixiv API host.
+- Downloaded files are validated by `Content-Type` and magic bytes.
 
 ## License
 
-This Project is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)
