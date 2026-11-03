@@ -57,6 +57,18 @@ func TestLoadInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestContentAnalysisDefaults(t *testing.T) {
+	cfg := Default()
+	cfg.QRMinCoverage = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !cfg.SkipQR || !cfg.SkipMosaic || !cfg.SkipBlur || cfg.QRMinCoverage != 0.02 {
+		t.Fatalf("content analysis defaults wrong: qr=%v mosaic=%v blur=%v coverage=%v",
+			cfg.SkipQR, cfg.SkipMosaic, cfg.SkipBlur, cfg.QRMinCoverage)
+	}
+}
+
 func TestApplyEnv(t *testing.T) {
 	t.Setenv("RANDAMU_IMAGES_DIR", "/tmp/images")
 	t.Setenv("RANDAMU_STATE_DIR", "/tmp/state")

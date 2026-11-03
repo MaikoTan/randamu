@@ -15,6 +15,7 @@ This replaces the old Python/FastAPI random-wallpaper service.
 - Zero third-party Go dependencies — one static binary, low memory
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
+- Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
 
 ## Requirements
 
@@ -62,6 +63,10 @@ and the file overrides built-in defaults:
   "skip_ai": true,
   "skip_r18": true,
   "skip_r18g": true,
+  "skip_qr": true,
+  "skip_mosaic": true,
+  "skip_blur": true,
+  "qr_min_coverage": 0.02,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
@@ -82,6 +87,28 @@ Config path resolution: `--config` > `$RANDAMU_CONFIG` > `$XDG_CONFIG_HOME/randa
 
 Environment variables: `PIXIV_REFRESH_TOKEN`, `RANDAMU_CONFIG`, `RANDAMU_IMAGES_DIR`,
 `RANDAMU_STATE_DIR`, `RANDAMU_PROXY`.
+
+### Content analysis
+
+The `skip_qr`, `skip_mosaic` and `skip_blur` options (all on by default)
+reject images that are not usable illustrations. The checks are pure Go:
+
+- **QR poster** — scans for QR finder patterns (the 1:1:3:1:1 corner squares)
+  at a higher resolution than the other checks and rejects the image when the
+  code covers at least `qr_min_coverage` (2% by default). Promo pages often
+  put a small QR in a corner.
+- **Mosaic censorship** — rejects the image when more than half of its
+  16×16 blocks are flat and adjacent flat blocks alternate sharply, the
+  checkerboard signature of pixelated censorship. A plain sky or a smooth
+  gradient is not affected.
+- **Full-image blur** — rejects the image when almost no pixel carries a
+  sharp edge, the signature of a teaser that only exists to push viewers to
+  a paid site (Fanbox, Fantia, …).
+
+Analysis runs once per downloaded file and never re-downloads: rejected
+illust ids are remembered in `state.json` and skipped on later runs.
+Undecodable formats (e.g. WebP, which the Go standard library cannot read)
+are kept unchanged.
 
 ### Token sources
 
@@ -128,7 +155,7 @@ Exit codes: `0` success (including skips), `1` fatal, `2` invalid config,
 
 | File | Purpose |
 |---|---|
-| `state.json` | pagination cursors, recommended offset, recently viewed ids |
+| `state.json` | pagination cursors, recommended offset, recently viewed ids, rejected illust ids |
 | `refresh_token` | rotated refresh token (mode `0600`) |
 | `lock` | prevents overlapping runs |
 

@@ -8,6 +8,10 @@
   "skip_ai": true,
   "skip_r18": true,
   "skip_r18g": true,
+  "skip_qr": true,
+  "skip_mosaic": true,
+  "skip_blur": true,
+  "qr_min_coverage": 0.02,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },

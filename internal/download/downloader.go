@@ -36,6 +36,8 @@ const (
 	Downloaded Status = iota
 	// Skipped means the file already exists or the original is gone.
 	Skipped
+	// Rejected means the image was downloaded but failed content analysis.
+	Rejected
 	// Failed means retries were exhausted.
 	Failed
 )
@@ -47,6 +49,8 @@ func (s Status) String() string {
 		return "downloaded"
 	case Skipped:
 		return "skipped"
+	case Rejected:
+		return "rejected"
 	default:
 		return "failed"
 	}
@@ -61,6 +65,9 @@ type Options struct {
 	AllowedHost string
 	HTTPClient  *http.Client
 	Logger      *slog.Logger
+	// Analyze, when non-nil, inspects a fully downloaded image; returning
+	// an error deletes the file and reports the download as Rejected.
+	Analyze func(path string) error
 }
 
 // Downloader downloads images into a local directory concurrently.
@@ -72,6 +79,7 @@ type Downloader struct {
 	allowedHost string
 	http        *http.Client
 	log         *slog.Logger
+	analyze     func(path string) error
 
 	mu      sync.Mutex
 	claimed map[string]struct{}
@@ -97,6 +105,7 @@ func New(opts Options) *Downloader {
 		http:        opts.HTTPClient,
 		log:         opts.Logger,
 		claimed:     make(map[string]struct{}),
+		analyze:     opts.Analyze,
 	}
 }
 
@@ -169,6 +178,12 @@ func (d *Downloader) Download(ctx context.Context, job Job) (Status, error) {
 
 		complete, retryAfter, err := d.tryDownload(ctx, job.URL, part)
 		if complete {
+			if d.analyze != nil {
+				if aerr := d.analyze(part); aerr != nil {
+					_ = os.Remove(part)
+					return Rejected, aerr
+				}
+			}
 			if err := os.Rename(part, final); err != nil {
 				// Another process finished the same file first; treat it as success.
 				if _, statErr := os.Stat(final); statErr == nil {

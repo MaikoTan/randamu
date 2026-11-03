@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -264,6 +265,55 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 	if err == nil || status != Failed {
 		t.Fatalf("path traversal must fail: %v, %v", status, err)
 	}
+}
+
+func TestDownloadAnalyzeReject(t *testing.T) {
+	body := append(append([]byte{}, jpegPrefix...), []byte("payload")...)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write(body)
+	}))
+	defer srv.Close()
+
+	d := New(Options{
+		Dir:         t.TempDir(),
+		MaxRetries:  3,
+		AllowedHost: "",
+		Analyze:     func(path string) error { return errors.New("mosaic covers 90% of blocks") },
+	})
+	name := "12345678_p0.jpg"
+	status, err := d.Download(context.Background(), Job{URL: srv.URL + "/" + name, Filename: name})
+	if err == nil || status != Rejected {
+		t.Fatalf("rejected analysis must return Rejected: %v, %v", status, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(d.dir, name)); !os.IsNotExist(statErr) {
+		t.Fatal("a rejected image must be deleted")
+	}
+	if _, statErr := os.Stat(filepath.Join(d.dir, name) + ".part"); !os.IsNotExist(statErr) {
+		t.Fatal("a rejected image must not leave a .part file")
+	}
+}
+
+func TestDownloadAnalyzePass(t *testing.T) {
+	body := append(append([]byte{}, jpegPrefix...), []byte("payload")...)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write(body)
+	}))
+	defer srv.Close()
+
+	d := New(Options{
+		Dir:         t.TempDir(),
+		MaxRetries:  3,
+		AllowedHost: "",
+		Analyze:     func(path string) error { return nil },
+	})
+	name := "12345678_p0.jpg"
+	status, err := d.Download(context.Background(), Job{URL: srv.URL + "/" + name, Filename: name})
+	if err != nil || status != Downloaded {
+		t.Fatalf("passing analysis must download: %v, %v", status, err)
+	}
+	assertFile(t, filepath.Join(d.dir, name), body)
 }
 
 func TestDownloadKeepsPartOnCancel(t *testing.T) {

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/MaikoTan/randamu/internal/analyze"
 	"github.com/MaikoTan/randamu/internal/config"
 	"github.com/MaikoTan/randamu/internal/download"
 	"github.com/MaikoTan/randamu/internal/filter"
@@ -120,7 +122,7 @@ func run() int {
 	}
 	defer release()
 
-	downloader := download.New(download.Options{
+	downloadOpts := download.Options{
 		Dir:         cfg.ImagesDir,
 		MaxRetries:  cfg.MaxRetries,
 		UserAgent:   pixiv.DefaultUserAgent,
@@ -128,7 +130,28 @@ func run() int {
 		AllowedHost: "i.pximg.net",
 		HTTPClient:  httpClient,
 		Logger:      logger,
-	})
+	}
+	if cfg.SkipQR || cfg.SkipMosaic || cfg.SkipBlur {
+		analyzeOpts := analyze.Options{
+			QR:            cfg.SkipQR,
+			Mosaic:        cfg.SkipMosaic,
+			Blur:          cfg.SkipBlur,
+			QRMinCoverage: cfg.QRMinCoverage,
+		}
+		downloadOpts.Analyze = func(path string) error {
+			res := analyze.CheckFile(path, analyzeOpts)
+			if res.DecodeErr != nil {
+				// Analysis is best-effort: undecodable files (WebP) are kept.
+				logger.Debug("content analysis skipped", "file", path, "error", res.DecodeErr)
+				return nil
+			}
+			if res.Skip {
+				return errors.New(res.Reason)
+			}
+			return nil
+		}
+	}
+	downloader := download.New(downloadOpts)
 	filterOpts := filter.Options{
 		SkipAI:       cfg.SkipAI,
 		SkipR18:      cfg.SkipR18,
@@ -242,6 +265,10 @@ func runSource(
 				logger.Debug("skipping work", "id", illust.ID, "reason", reason, "source", key)
 				continue
 			}
+			if st.IsRejected(illust.ID) {
+				logger.Debug("skipping previously rejected work", "id", illust.ID, "source", key)
+				continue
+			}
 			for pageIdx, rawURL := range filter.OriginalURLs(illust) {
 				name, err := download.FileName(illust.ID, pageIdx, rawURL)
 				if err != nil {
@@ -258,7 +285,7 @@ func runSource(
 			}
 		}
 
-		pageFailures := runJobs(ctx, d, jobs, cfg.Concurrency, logger, dryRun)
+		pageFailures := runJobs(ctx, d, jobs, cfg.Concurrency, logger, dryRun, st)
 		failures += pageFailures
 		if pageFailures > 0 {
 			// Page barrier: not every job on this page finished, so the cursor does not advance.
@@ -294,8 +321,10 @@ func runSource(
 	return failures, nil
 }
 
-// runJobs executes one page of download jobs concurrently and returns the failure count.
-func runJobs(ctx context.Context, d *download.Downloader, jobs []download.Job, workers int, logger *slog.Logger, dryRun bool) int {
+// runJobs executes one page of download jobs concurrently and returns the
+// failure count. Jobs rejected by content analysis are recorded in state and
+// do not count as failures.
+func runJobs(ctx context.Context, d *download.Downloader, jobs []download.Job, workers int, logger *slog.Logger, dryRun bool, st *state.State) int {
 	if len(jobs) == 0 {
 		return 0
 	}
@@ -318,14 +347,20 @@ func runJobs(ctx context.Context, d *download.Downloader, jobs []download.Job, w
 					continue
 				}
 				status, err := d.Download(ctx, job)
-				if err != nil || status == download.Failed {
+				switch {
+				case status == download.Rejected:
+					mu.Lock()
+					st.AddRejected(job.IllustID, 10000)
+					mu.Unlock()
+					logger.Info("rejected by content analysis", "file", job.Filename, "illust", job.IllustID, "reason", err)
+				case err != nil || status == download.Failed:
 					mu.Lock()
 					failures++
 					mu.Unlock()
 					logger.Warn("download failed", "file", job.Filename, "url", job.URL, "error", err)
-					continue
+				default:
+					logger.Debug("download result", "file", job.Filename, "status", status.String())
 				}
-				logger.Debug("download result", "file", job.Filename, "status", status.String())
 			}
 		}()
 	}

@@ -26,16 +26,25 @@ type Source struct {
 
 // Config is the complete program configuration.
 type Config struct {
-	ImagesDir            string   `json:"images_dir"`
-	StateDir             string   `json:"state_dir"`
-	Proxy                string   `json:"proxy"`
-	UserID               int64    `json:"user_id"`
-	Concurrency          int      `json:"concurrency"`
-	MaxRetries           int      `json:"max_retries"`
-	MaxPageCount         int      `json:"max_page_count"`
-	SkipAI               bool     `json:"skip_ai"`
-	SkipR18              bool     `json:"skip_r18"`
-	SkipR18G             bool     `json:"skip_r18g"`
+	ImagesDir    string `json:"images_dir"`
+	StateDir     string `json:"state_dir"`
+	Proxy        string `json:"proxy"`
+	UserID       int64  `json:"user_id"`
+	Concurrency  int    `json:"concurrency"`
+	MaxRetries   int    `json:"max_retries"`
+	MaxPageCount int    `json:"max_page_count"`
+	SkipAI       bool   `json:"skip_ai"`
+	SkipR18      bool   `json:"skip_r18"`
+	SkipR18G     bool   `json:"skip_r18g"`
+	// SkipQR, SkipMosaic and SkipBlur reject non-illustration images by
+	// content analysis after download: QR-code posters, mosaic-censored
+	// works and fully blurred paid-site teasers.
+	SkipQR     bool `json:"skip_qr"`
+	SkipMosaic bool `json:"skip_mosaic"`
+	SkipBlur   bool `json:"skip_blur"`
+	// QRMinCoverage is the share of the image a QR code must cover before
+	// the image is rejected (default 0.02).
+	QRMinCoverage        float64  `json:"qr_min_coverage"`
 	BlacklistTags        []string `json:"blacklist_tags"`
 	APIRequestsPerSecond float64  `json:"api_requests_per_second"`
 	Sources              []Source `json:"sources"`
@@ -52,6 +61,10 @@ func Default() *Config {
 		SkipAI:               true,
 		SkipR18:              true,
 		SkipR18G:             true,
+		SkipQR:               true,
+		SkipMosaic:           true,
+		SkipBlur:             true,
+		QRMinCoverage:        0.02,
 		BlacklistTags:        []string{"漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"},
 		APIRequestsPerSecond: 2,
 		Sources: []Source{
@@ -130,6 +143,9 @@ func (c *Config) Validate() error {
 	}
 	if c.APIRequestsPerSecond <= 0 {
 		c.APIRequestsPerSecond = 2
+	}
+	if c.QRMinCoverage <= 0 || c.QRMinCoverage > 1 {
+		c.QRMinCoverage = 0.02
 	}
 	for i := range c.Sources {
 		s := &c.Sources[i]

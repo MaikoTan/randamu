@@ -86,6 +86,43 @@ func TestRecentViewed(t *testing.T) {
 	}
 }
 
+func TestRejectedRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s := New()
+	s.AddRejected(7, 3)
+	s.AddRejected(8, 3)
+	if !s.IsRejected(7) || !s.IsRejected(8) {
+		t.Fatalf("rejected ids not tracked: %v", s.Rejected)
+	}
+	s.AddRejected(7, 3) // duplicate moves to the end, list stays capped
+	if got := s.Rejected; len(got) != 2 || got[0] != 8 || got[1] != 7 {
+		t.Fatalf("dedup failed: %v", got)
+	}
+	if err := s.Save(dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !loaded.IsRejected(7) || !loaded.IsRejected(8) {
+		t.Fatalf("rejected ids not persisted: %v", loaded.Rejected)
+	}
+}
+
+func TestRejectedCap(t *testing.T) {
+	s := New()
+	for i := int64(1); i <= 5; i++ {
+		s.AddRejected(i, 3)
+	}
+	if got := s.Rejected; len(got) != 3 || got[0] != 3 || got[2] != 5 {
+		t.Fatalf("cap failed: %v", got)
+	}
+	if s.IsRejected(1) || s.IsRejected(2) {
+		t.Fatal("evicted ids must no longer count as rejected")
+	}
+}
+
 func TestLock(t *testing.T) {
 	dir := t.TempDir()
 	release, err := Lock(dir)

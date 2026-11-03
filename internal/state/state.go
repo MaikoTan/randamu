@@ -19,7 +19,10 @@ type State struct {
 	Cursors map[string]string `json:"cursors"`
 	Offsets map[string]int    `json:"offsets"`
 	Viewed  []int64           `json:"viewed"`
-	LastRun time.Time         `json:"last_run"`
+	// Rejected illust ids whose images failed content analysis; they are
+	// not re-downloaded and their pages are treated as completed.
+	Rejected []int64   `json:"rejected,omitempty"`
+	LastRun  time.Time `json:"last_run"`
 }
 
 // New returns an empty state.
@@ -94,6 +97,31 @@ func (s *State) RecentViewed(n int) []int64 {
 		return s.Viewed
 	}
 	return s.Viewed[len(s.Viewed)-n:]
+}
+
+// AddRejected records a rejected illust id, keeping only the most recent
+// limit entries so the list stays small.
+func (s *State) AddRejected(id int64, limit int) {
+	for i, v := range s.Rejected {
+		if v == id {
+			s.Rejected = append(s.Rejected[:i], s.Rejected[i+1:]...)
+			break
+		}
+	}
+	s.Rejected = append(s.Rejected, id)
+	if limit > 0 && len(s.Rejected) > limit {
+		s.Rejected = s.Rejected[len(s.Rejected)-limit:]
+	}
+}
+
+// IsRejected reports whether the illust id was previously rejected.
+func (s *State) IsRejected(id int64) bool {
+	for _, v := range s.Rejected {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Lock acquires a single-instance lock and returns a release function.
