@@ -1,0 +1,11 @@
+[Unit]
+Description=randamu periodic fetch
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+OnBootSec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,24 @@
+# nfpm config for the deb/rpm release assets. Version and architecture are
+# filled in from the environment by the release workflow; the deb/rpm
+# contain the Linux binary, the reference systemd units and the docs.
+name: randamu
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${NFPM_VERSION}
+section: utils
+priority: optional
+maintainer: Maiko Tan <maiko.tan@outlook.com>
+description: Periodic pixiv image fetcher with idempotent downloads
+homepage: https://github.com/MaikoTan/randamu
+license: MIT
+contents:
+  - src: ./randamu
+    dst: /usr/bin/randamu
+  - src: ./contrib/systemd/randamu.service
+    dst: /usr/lib/systemd/system/randamu.service
+  - src: ./contrib/systemd/randamu.timer
+    dst: /usr/lib/systemd/system/randamu.timer
+  - src: ./README.md
+    dst: /usr/share/doc/randamu/README.md
+  - src: ./LICENSE
+    dst: /usr/share/doc/randamu/copyright

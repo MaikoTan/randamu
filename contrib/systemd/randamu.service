@@ -1,0 +1,20 @@
+[Unit]
+Description=randamu pixiv image fetcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=randamu
+Group=randamu
+UMask=0027
+# The refresh token is read from the environment (PIXIV_REFRESH_TOKEN) or
+# from the rotated copy in the state directory; never put it in this file.
+Environment=RANDAMU_STATE_DIR=/var/lib/randamu
+Environment=RANDAMU_IMAGES_DIR=/var/lib/randamu/images
+# Add a RANDAMU_PROXY line here when pixiv is unreachable directly.
+ExecStart=/usr/bin/randamu
+Restart=on-failure
+RestartSec=15min
+
+[Install]

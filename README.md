@@ -27,6 +27,24 @@ This replaces the old Python/FastAPI random-wallpaper service.
   archives already include it under `tesseract/`; the Windows arm64 archive and
   the Linux/macOS archives look for it in `PATH`
 
+## Install
+
+- **Debian/Ubuntu** — `sudo dpkg -i randamu_*_linux_x64.deb` (or `apt install ./...`),
+  installs `/usr/bin/randamu` plus `randamu.service` and `randamu.timer`; enable
+  the schedule with `sudo systemctl enable --now randamu.timer`. Create the
+  service user first: `sudo useradd --system --home-dir /var/lib/randamu --create-home randamu`
+  (the units assume user/group `randamu`).
+- **Fedora/RHEL** — `sudo rpm -i randamu_*_linux_x64.rpm`, same units and setup.
+- **Arch (AUR)** — not published; build from source or use the tar.gz.
+- **macOS / Windows** — download the archive, or on Windows run
+  `contrib/windows/install.ps1` (bundled in the zip) to register a daily
+  scheduled task; `uninstall.ps1` removes it. The scripts and their options
+  are documented in `contrib/windows/README.md`.
+- **Nix** — `nix profile install github:MaikoTan/randamu`, or use the bundled
+  NixOS / home-manager modules (below).
+- **Any other Linux** — unpack the tar.gz and schedule it yourself; reference
+  systemd units live in `contrib/systemd/`.
+
 ## Getting a refresh token
 
 Follow [this guide](https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362).
