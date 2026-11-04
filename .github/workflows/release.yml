@@ -21,14 +21,15 @@ jobs:
 
   build:
     needs: test
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux }
-          - { goos: windows }
-          - { goos: darwin }
+          - { goos: linux, runner: ubuntu-latest }
+          - { goos: windows, runner: ubuntu-latest }
+          # pkgbuild only exists on macOS; the darwin job runs there.
+          - { goos: darwin, runner: macos-latest }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -36,9 +37,10 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Install packaging tools
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils nsis
           curl -fsSL -o /tmp/nfpm.tar.gz \
             "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
           curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/checksums.txt \
@@ -64,8 +66,15 @@ jobs:
           fi
 
           # Download and prune the tesseract installers once; both x86 and
-          # x64 stages copy from these trees.
-          declare -A tess_dirs
+          # x64 stages copy from these trees. A plain case instead of an
+          # associative array keeps this script compatible with bash 3.2,
+          # which macOS runners still use.
+          tesseract_dir() {
+            case "$1" in
+              w32) echo /tmp/tesseract-w32 ;;
+              w64) echo /tmp/tesseract-w64 ;;
+            esac
+          }
           if [ "$GOOS" = "windows" ]; then
             for spec in "w32 5.3.0.20221222 33d7824a440e1660b74dc55f10355b346a22fdbe430143f7f6885cfa3cfdf7e7" \
                         "w64 5.4.0.20240606 c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9"; do
@@ -84,7 +93,6 @@ jobs:
               for f in "/tmp/tesseract-$arch/tesseract.exe" "/tmp/tesseract-$arch"/*.dll; do
                 objcopy --strip-all "$f"
               done
-              tess_dirs[$arch]="/tmp/tesseract-$arch"
             done
           fi
 
@@ -105,18 +113,42 @@ jobs:
               # works without installing anything. There is no official
               # Windows arm64 build, so that archive relies on tesseract in
               # PATH.
-              local bundle="$dir/tesseract"
+              local bundle="$dir/tesseract" tdir
+              tdir="$(tesseract_dir "$tess")"
               cp THIRD-PARTY-NOTICES.md "$dir/"
               mkdir -p "$bundle/tessdata"
-              cp "${tess_dirs[$tess]}/tesseract.exe" "${tess_dirs[$tess]}"/*.dll "$bundle/"
-              cp "${tess_dirs[$tess]}/tessdata/eng.traineddata" "$bundle/tessdata/"
-              cp -r "${tess_dirs[$tess]}/tessdata/configs" "$bundle/tessdata/"
-              cp "${tess_dirs[$tess]}/doc/LICENSE" "$bundle/LICENSE"
+              cp "$tdir/tesseract.exe" "$tdir"/*.dll "$bundle/"
+              cp "$tdir/tessdata/eng.traineddata" "$bundle/tessdata/"
+              cp -r "$tdir/tessdata/configs" "$bundle/tessdata/"
+              cp "$tdir/doc/LICENSE" "$bundle/LICENSE"
             fi
             if [ "$GOOS" = "windows" ]; then
               (cd dist && zip -qr "randamu_${version}_${name}.zip" "$name")
+              # NSIS installer with the same staged payload. makensis resolves
+              # payload and output paths against its script directory, so both
+              # are absolute.
+              local payload out
+              payload="$(pwd)/$dir"
+              out="$(pwd)/dist/randamu_${version}_${name}_setup.exe"
+              makensis -V2 -DVERSION="$version" -DARCH="$goarch" \
+                -DPAYLOAD="$payload" -DOUTFILE="$out" \
+                contrib/windows/installer.nsi
             else
               tar -C dist -czf "dist/randamu_${version}_${name}.tar.gz" "$name"
+            fi
+            if [ "$GOOS" = "darwin" ]; then
+              # Per-architecture .pkg installing into /usr/local/bin. pkgbuild
+              # records the source ownership, so the tree must belong to root.
+              local root="/tmp/pkgroot-$name"
+              rm -rf "$root"
+              mkdir -p "$root/usr/local/bin" "$root/usr/local/share/doc/randamu"
+              cp "$dir/randamu" "$root/usr/local/bin/"
+              cp README.md LICENSE "$root/usr/local/share/doc/randamu/"
+              sudo chown -R root:wheel "$root"
+              pkgbuild --root "$root" --identifier "com.maikotan.randamu" \
+                --version "$version" --install-location / \
+                "dist/randamu_${version}_${name}.pkg"
+              rm -rf "$root"
             fi
             if [ "$GOOS" = "linux" ] && [ -n "$nfpm_arch" ]; then
               # deb/rpm; nfpm expands ${NFPM_ARCH}/${NFPM_VERSION} from the
@@ -168,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum ./*.tar.gz ./*.zip ./*.deb ./*.rpm > SHA256SUMS
+          sha256sum ./*.tar.gz ./*.zip ./*.deb ./*.rpm ./*.exe ./*.pkg > SHA256SUMS
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

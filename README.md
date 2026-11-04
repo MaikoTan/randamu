@@ -36,10 +36,15 @@ This replaces the old Python/FastAPI random-wallpaper service.
   (the units assume user/group `randamu`).
 - **Fedora/RHEL** — `sudo rpm -i randamu_*_linux_x64.rpm`, same units and setup.
 - **Arch (AUR)** — not published; build from source or use the tar.gz.
-- **macOS / Windows** — download the archive, or on Windows run
-  `contrib/windows/install.ps1` (bundled in the zip) to register a daily
-  scheduled task; `uninstall.ps1` removes it. The scripts and their options
-  are documented in `contrib/windows/README.md`.
+- **Windows** — run `randamu_*_windows_x64_setup.exe` (a per-architecture NSIS
+  installer that also adds `randamu` to `PATH` and bundles tesseract for
+  x64/x86), or use the zip with `install.ps1` to register a daily scheduled
+  task. `uninstall.ps1` removes the task; the installer has its own uninstaller.
+  The scripts and their options are documented in `contrib/windows/README.md`.
+- **macOS** — `sudo installer -pkg randamu_*_macos_aarch64.pkg -target /`
+  installs `/usr/local/bin/randamu`; the archive is unsigned, so a downloaded
+  pkg may need `xattr -d com.apple.quarantine <file>.pkg` first. The tar.gz
+  works without an installer.
 - **Nix** — `nix profile install github:MaikoTan/randamu`, or use the bundled
   NixOS / home-manager modules (below).
 - **Any other Linux** — unpack the tar.gz and schedule it yourself; reference
