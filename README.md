@@ -16,7 +16,7 @@ This replaces the old Python/FastAPI random-wallpaper service.
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
 - Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
-- Multi-page variations (差分) are merged into one looping animated PNG (APNG)
+- Multi-page variations (差分) are merged into looping animated PNGs (APNG), one per variation set
 
 ## Requirements
 
@@ -149,16 +149,17 @@ are kept unchanged.
 ### Variation merging (差分)
 
 With `merge_variations` enabled (the default), the pages of one work are
-merged into a single looping APNG (`{id}.png`, one frame per page,
-`variation_delay_ms` apart, 1000 ms by default) and the individual pages are
-removed. Merging only happens when:
+grouped into variation sets and each set is merged into a looping APNG
+(`variation_delay_ms` apart, 1000 ms by default), removing the pages it
+merged. Consecutive pages form a set while:
 
 - every page decoded successfully,
-- all pages have the same pixel size, and
-- every page resembles the first one: either the overall luma correlation is
-  at least `variation_min_similarity` (0.9 by default, range 0–1), or the
-  central half correlates at least 0.97, which covers variations that repaint
-  the background or change the framing while the subject stays in place.
+- the pages share the same pixel size, and
+- each page resembles the first page of its set: either the overall luma
+  correlation is at least `variation_min_similarity` (0.9 by default, range
+  0–1), or the central half correlates at least 0.97, which covers variations
+  that repaint the background or change the framing while the subject stays in
+  place.
 
 With `variation_match_character` enabled (the default), a page is also
 accepted when the main character keeps the same clothing and hair colors in
@@ -166,10 +167,15 @@ the same place. It compares the saturated colors of the central subject and
 their spatial distribution, so it still works when the face is hidden;
 black-and-white pages have too little color for this check.
 
-Works that do not qualify — ordinary multi-page manga, several unrelated
-illustrations in one post — keep their page files untouched. The thresholds
-are normalized cross-correlations, so variations that recolor or restyle
-parts of the picture still merge, while sequential manga pages do not.
+When every page belongs to one set the APNG is `{id}.png`. When a work mixes
+several sets with unrelated pages — an artist uploading separate commissions
+in one post — each set becomes `{id}_v1.png`, `{id}_v2.png`, … and the pages
+that resemble nothing keep their page files untouched. Works that contain no
+variation at all, such as ordinary multi-page manga, are left alone.
+
+The thresholds are normalized cross-correlations, so variations that recolor
+or restyle parts of the picture still merge, while sequential manga pages do
+not.
 
 A merged APNG is detected on later runs and skipped, so its pages are never
 downloaded again. APNG stores every frame at full resolution, so the merged

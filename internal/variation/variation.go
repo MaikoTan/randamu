@@ -1,5 +1,5 @@
 // Package variation merges the pages of a pixiv work that are variations of
-// one picture (差分) into a single animated PNG.
+// one picture (差分) into animated PNGs, one per variation set.
 package variation
 
 import (
@@ -31,84 +31,152 @@ type Options struct {
 	MatchCharacter bool
 }
 
-// Merge combines pages into {id}.png inside dir and removes the page files.
-// It refuses with ErrNotVariation unless every page decodes, all pages share
-// one size, and every page resembles the first one: by the whole-frame
+// Merge groups the pages into variation sets and writes one APNG per set of
+// two or more pages, removing the pages it merged. Consecutive pages form a
+// set while they resemble the first page of that set: by the whole-frame
 // correlation, by a near-identical central area, or, when enabled, by an
 // unchanged character.
-func Merge(dir string, id int64, pages []string, delay time.Duration, opts Options) (string, error) {
+//
+// A work where every page belongs to one set becomes {id}.png. A work that
+// mixes several sets and standalone pages — common when an artist uploads
+// unrelated commissions together — becomes {id}_v1.png, {id}_v2.png, ... and
+// the pages that resemble nothing keep their files. Pages with different
+// pixel sizes never share a set. It returns ErrNotVariation when no two pages
+// resemble each other or when a page cannot be decoded.
+func Merge(dir string, id int64, pages []string, delay time.Duration, opts Options) ([]string, error) {
 	if len(pages) < 2 {
-		return "", fmt.Errorf("%w: %d page(s)", ErrNotVariation, len(pages))
+		return nil, fmt.Errorf("%w: %d page(s)", ErrNotVariation, len(pages))
 	}
 	frames := make([]image.Image, 0, len(pages))
 	for _, p := range pages {
 		img, err := decodeFile(p)
 		if err != nil {
-			return "", err
-		}
-		if len(frames) > 0 {
-			a, b := frames[0].Bounds(), img.Bounds()
-			if a.Dx() != b.Dx() || a.Dy() != b.Dy() {
-				return "", fmt.Errorf("%w: %s is %dx%d, first page is %dx%d",
-					ErrNotVariation, p, b.Dx(), b.Dy(), a.Dx(), a.Dy())
-			}
+			return nil, err
 		}
 		frames = append(frames, img)
 	}
-	first := lumaGrid(frames[0])
-	firstCenter := lumaGridRect(frames[0], centerRect(frames[0].Bounds()))
-	var firstCharacter characterSignature
-	characterOK := false
-	if opts.MatchCharacter {
-		firstCharacter, characterOK = newCharacterSignature(frames[0])
-	}
-	for i := 1; i < len(frames); i++ {
-		full := correlation(first, lumaGrid(frames[i]))
-		center := correlation(firstCenter, lumaGridRect(frames[i], centerRect(frames[i].Bounds())))
-		// A variation may repaint the background or move the framing while the
-		// subject stays put, so a near-identical central area is enough.
-		if full >= opts.MinSimilarity || center >= centerMinSimilarity {
-			continue
-		}
-		if characterOK {
-			if current, ok := newCharacterSignature(frames[i]); ok {
-				colorDist, pose, ok := firstCharacter.match(current)
-				if ok && colorDist <= characterMaxColorDistance && pose >= characterMinPoseSimilarity {
-					continue
-				}
-				return "", fmt.Errorf("%w: page %d similarity %.3f (center %.3f, character color %.1f, pose %.3f) below threshold",
-					ErrNotVariation, i, full, center, colorDist, pose)
-			}
-		}
-		return "", fmt.Errorf("%w: page %d similarity %.3f (center %.3f) below threshold",
-			ErrNotVariation, i, full, center)
+	sigs := make([]pageSignature, len(frames))
+	for i, img := range frames {
+		sigs[i] = newPageSignature(img, opts.MatchCharacter)
 	}
 
-	final := filepath.Join(dir, fmt.Sprintf("%d.png", id))
+	// Split the work into consecutive runs that share a picture. Comparing
+	// each page with the run's first page keeps the acceptance rules
+	// unchanged; the runs themselves are what allow a work to mix several
+	// variation sets with standalone pages.
+	type group struct{ start, end int }
+	var groups []group
+	for i := 0; i < len(sigs); {
+		j := i + 1
+		for j < len(sigs) && sigs[i].similar(sigs[j], opts.MinSimilarity) {
+			j++
+		}
+		groups = append(groups, group{start: i, end: j})
+		i = j
+	}
+	mergeable := 0
+	for _, g := range groups {
+		if g.end-g.start >= 2 {
+			mergeable++
+		}
+	}
+	if mergeable == 0 {
+		return nil, fmt.Errorf("%w: no two pages resemble each other", ErrNotVariation)
+	}
+	wholeWork := len(groups) == 1
+
+	var finals []string
+	written := 0
+	for _, g := range groups {
+		if g.end-g.start < 2 {
+			continue
+		}
+		written++
+		name := fmt.Sprintf("%d.png", id)
+		if !wholeWork {
+			name = fmt.Sprintf("%d_v%d.png", id, written)
+		}
+		final := filepath.Join(dir, name)
+		if err := writeAPNG(dir, final, frames[g.start:g.end], delay); err != nil {
+			return finals, err
+		}
+		for _, p := range pages[g.start:g.end] {
+			if err := os.Remove(p); err != nil {
+				return finals, fmt.Errorf("remove %s: %w", p, err)
+			}
+		}
+		finals = append(finals, final)
+	}
+	return finals, nil
+}
+
+// pageSignature caches the analysis grids of one page.
+type pageSignature struct {
+	width, height int
+	full, center  []float64
+	character     characterSignature
+	hasCharacter  bool
+}
+
+// newPageSignature analyses img once so later comparisons are cheap.
+func newPageSignature(img image.Image, matchCharacter bool) pageSignature {
+	b := img.Bounds()
+	s := pageSignature{
+		width:  b.Dx(),
+		height: b.Dy(),
+		full:   lumaGrid(img),
+		center: lumaGridRect(img, centerRect(b)),
+	}
+	if matchCharacter {
+		s.character, s.hasCharacter = newCharacterSignature(img)
+	}
+	return s
+}
+
+// similar reports whether o is a variation of s: same canvas, and the whole
+// frame or the central area correlates high enough, or the character keeps
+// its colors and pose.
+func (s pageSignature) similar(o pageSignature, minSimilarity float64) bool {
+	// Different pixel sizes cannot be frames of one picture.
+	if s.width != o.width || s.height != o.height {
+		return false
+	}
+	if correlation(s.full, o.full) >= minSimilarity {
+		return true
+	}
+	// A variation may repaint the background or move the framing while the
+	// subject stays put, so a near-identical central area is enough.
+	if correlation(s.center, o.center) >= centerMinSimilarity {
+		return true
+	}
+	if s.hasCharacter && o.hasCharacter {
+		colorDist, pose, ok := s.character.match(o.character)
+		return ok && colorDist <= characterMaxColorDistance && pose >= characterMinPoseSimilarity
+	}
+	return false
+}
+
+// writeAPNG encodes frames into final through a temporary file.
+func writeAPNG(dir, final string, frames []image.Image, delay time.Duration) error {
 	tmp, err := os.CreateTemp(dir, ".variation-*.png")
 	if err != nil {
-		return "", err
+		return err
 	}
 	tmpName := tmp.Name()
 	if err := apng.Encode(tmp, frames, delay); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
-		return "", err
+		return err
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
-		return "", err
+		return err
 	}
 	if err := os.Rename(tmpName, final); err != nil {
 		os.Remove(tmpName)
-		return "", err
+		return err
 	}
-	for _, p := range pages {
-		if err := os.Remove(p); err != nil {
-			return final, fmt.Errorf("remove %s: %w", p, err)
-		}
-	}
-	return final, nil
+	return nil
 }
 
 // decodeFile reads one image file with the standard library decoders.

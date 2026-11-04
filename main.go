@@ -267,8 +267,8 @@ func runSource(
 		}
 
 		var jobs []download.Job
-		// pageNames tracks the files of each multi-page work so they can be
-		// merged into one APNG after this page of jobs completes.
+		// pageNames tracks the files of each multi-page work so its variation
+		// sets can be merged into APNGs after this page of jobs completes.
 		pageNames := make(map[int64][]string)
 		for _, illust := range page.Illusts {
 			if processed >= src.Limit {
@@ -287,7 +287,7 @@ func runSource(
 				continue
 			}
 			if cfg.MergeVariations {
-				if _, err := os.Stat(filepath.Join(cfg.ImagesDir, fmt.Sprintf("%d.png", illust.ID))); err == nil {
+				if mergedExists(cfg.ImagesDir, illust.ID) {
 					logger.Debug("skipping merged work", "id", illust.ID, "source", key)
 					continue
 				}
@@ -413,14 +413,14 @@ func runJobs(ctx context.Context, d *download.Downloader, jobs []download.Job, w
 }
 
 // mergeVariations combines the downloaded pages of each work that look like
-// variations of one picture (差分) into a single looping APNG, then removes
-// the individual pages. Works whose pages failed, were rejected or do not
-// resemble each other keep their page files untouched.
+// variations of one picture (差分) into looping APNGs, then removes the pages
+// it merged. Works whose pages failed, were rejected or do not resemble each
+// other keep their page files untouched. A work may contain several variation
+// sets and standalone pages; each set is merged on its own.
 func mergeVariations(cfg *config.Config, works map[int64][]string, logger *slog.Logger) {
 	delay := time.Duration(cfg.VariationDelayMS) * time.Millisecond
 	for id, names := range works {
-		final := filepath.Join(cfg.ImagesDir, fmt.Sprintf("%d.png", id))
-		if _, err := os.Stat(final); err == nil {
+		if mergedExists(cfg.ImagesDir, id) {
 			continue
 		}
 		paths := make([]string, 0, len(names))
@@ -440,7 +440,8 @@ func mergeVariations(cfg *config.Config, works map[int64][]string, logger *slog.
 			MinSimilarity:  cfg.VariationMinSimilarity,
 			MatchCharacter: cfg.VariationCharacterMatch,
 		}
-		if _, err := variation.Merge(cfg.ImagesDir, id, paths, delay, opts); err != nil {
+		finals, err := variation.Merge(cfg.ImagesDir, id, paths, delay, opts)
+		if err != nil {
 			if errors.Is(err, variation.ErrNotVariation) {
 				logger.Debug("pages are not variations; keeping them", "illust", id, "reason", err)
 			} else {
@@ -448,8 +449,20 @@ func mergeVariations(cfg *config.Config, works map[int64][]string, logger *slog.
 			}
 			continue
 		}
-		logger.Info("merged variations into APNG", "illust", id, "pages", len(paths), "file", final)
+		logger.Info("merged variations into APNG", "illust", id, "pages", len(paths), "files", finals)
 	}
+}
+
+// mergedExists reports whether a previous run merged part of this work: the
+// whole work into {id}.png, or, for a work with several variation sets, the
+// first set into {id}_v1.png.
+func mergedExists(dir string, id int64) bool {
+	for _, name := range []string{fmt.Sprintf("%d.png", id), fmt.Sprintf("%d_v1.png", id)} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func filterSources(all []config.Source, want []string) []config.Source {

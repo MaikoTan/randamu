@@ -49,9 +49,9 @@ type Config struct {
 	// QRMinCoverage is the share of the image a QR code must cover before
 	// the image is rejected (default 0.02).
 	QRMinCoverage float64 `json:"qr_min_coverage"`
-	// MergeVariations combines the pages of one work into a single animated
-	// PNG when they look like variations of the same picture (差分), and
-	// removes the individual pages.
+	// MergeVariations combines the pages of one work that look like variations
+	// of the same picture (差分) into animated PNGs, and removes the individual
+	// pages. A work may contain several variation sets and standalone pages.
 	MergeVariations        bool    `json:"merge_variations"`
 	VariationMinSimilarity float64 `json:"variation_min_similarity"`
 	VariationDelayMS       int     `json:"variation_delay_ms"`

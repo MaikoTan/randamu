@@ -56,10 +56,14 @@ func TestMergeVariations(t *testing.T) {
 		return base(x, y)
 	})
 
-	final, err := Merge(dir, 42, []string{p0, p1}, time.Second, Options{MinSimilarity: 0.9})
+	finals, err := Merge(dir, 42, []string{p0, p1}, time.Second, Options{MinSimilarity: 0.9})
 	if err != nil {
 		t.Fatalf("Merge: %v", err)
 	}
+	if len(finals) != 1 {
+		t.Fatalf("Merge returned %d files, want 1: %v", len(finals), finals)
+	}
+	final := finals[0]
 	if want := filepath.Join(dir, "42.png"); final != want {
 		t.Errorf("final = %s, want %s", final, want)
 	}
@@ -209,6 +213,9 @@ func TestMergeRejectsDifferentPictures(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "7.png")); !os.IsNotExist(err) {
 		t.Errorf("merged file must not exist (err = %v)", err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "7_v1.png")); !os.IsNotExist(err) {
+		t.Errorf("merged file must not exist (err = %v)", err)
+	}
 }
 
 func TestMergeRejectsSizeMismatch(t *testing.T) {
@@ -219,6 +226,108 @@ func TestMergeRejectsSizeMismatch(t *testing.T) {
 	writePNG(t, p1, 60, 80, gradient(60, 80))
 	if _, err := Merge(dir, 9, []string{p0, p1}, time.Second, Options{MinSimilarity: 0.9}); !errors.Is(err, ErrNotVariation) {
 		t.Fatalf("Merge error = %v, want ErrNotVariation", err)
+	}
+}
+
+func TestMergeGroupsSeparateVariationSets(t *testing.T) {
+	dir := t.TempDir()
+	// Pages 1-2 are one variation set, page 3 is an unrelated commission and
+	// pages 4-6 are another set, as in works that collect several pictures.
+	vertical := func(x, y int) color.NRGBA {
+		return color.NRGBA{R: uint8(y * 255 / 29), G: uint8(y * 255 / 29), B: uint8(y * 255 / 29), A: 255}
+	}
+	horizontal := func(x, y int) color.NRGBA {
+		return color.NRGBA{R: uint8(x * 255 / 39), G: uint8(x * 255 / 39), B: uint8(x * 255 / 39), A: 255}
+	}
+	detail := func(base func(x, y int) color.NRGBA) func(x, y int) color.NRGBA {
+		return func(x, y int) color.NRGBA {
+			if x >= 10 && x < 20 && y >= 10 && y < 20 {
+				return color.NRGBA{R: 255, A: 255}
+			}
+			return base(x, y)
+		}
+	}
+	names := []string{"136_p0.png", "136_p1.png", "136_p2.png", "136_p3.png", "136_p4.png", "136_p5.png"}
+	at := []func(x, y int) color.NRGBA{
+		vertical, detail(vertical),
+		// Inverted: anti-correlated with both other sets.
+		func(x, y int) color.NRGBA {
+			c := vertical(x, y)
+			return color.NRGBA{R: 255 - c.R, G: 255 - c.G, B: 255 - c.B, A: 255}
+		},
+		horizontal, detail(horizontal), detail(horizontal),
+	}
+	paths := make([]string, len(names))
+	for i, name := range names {
+		paths[i] = filepath.Join(dir, name)
+		writePNG(t, paths[i], 40, 30, at[i])
+	}
+
+	finals, err := Merge(dir, 136, paths, time.Second, Options{MinSimilarity: 0.9})
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	want := []string{
+		filepath.Join(dir, "136_v1.png"),
+		filepath.Join(dir, "136_v2.png"),
+	}
+	if len(finals) != len(want) {
+		t.Fatalf("Merge returned %v, want %v", finals, want)
+	}
+	for i := range want {
+		if finals[i] != want[i] {
+			t.Errorf("final[%d] = %s, want %s", i, finals[i], want[i])
+		}
+		if _, err := os.Stat(want[i]); err != nil {
+			t.Errorf("merged file %s: %v", want[i], err)
+		}
+		// The whole-work name must not be used for a partial merge.
+		if _, err := os.Stat(filepath.Join(dir, "136.png")); !os.IsNotExist(err) {
+			t.Errorf("136.png must not exist (err = %v)", err)
+		}
+	}
+	// Pages 0, 1, 3, 4 and 5 were merged and removed; page 2 stays.
+	for i, p := range paths {
+		_, err := os.Stat(p)
+		if i == 2 {
+			if err != nil {
+				t.Errorf("standalone page %s must be kept: %v", p, err)
+			}
+		} else if !os.IsNotExist(err) {
+			t.Errorf("merged page %s still exists (err = %v)", p, err)
+		}
+	}
+}
+
+func TestMergeKeepsDifferentSizedStandalonePage(t *testing.T) {
+	dir := t.TempDir()
+	p0 := filepath.Join(dir, "5_p0.png")
+	p1 := filepath.Join(dir, "5_p1.png")
+	p2 := filepath.Join(dir, "5_p2.png")
+	base := gradient(40, 30)
+	writePNG(t, p0, 40, 30, base)
+	writePNG(t, p1, 40, 30, func(x, y int) color.NRGBA {
+		if x >= 10 && x < 20 && y >= 10 && y < 20 {
+			return color.NRGBA{R: 255, A: 255}
+		}
+		return base(x, y)
+	})
+	// A landscape commission between a variation set: different canvas, so it
+	// can never be a frame of the same picture.
+	writePNG(t, p2, 30, 40, gradient(30, 40))
+
+	finals, err := Merge(dir, 5, []string{p0, p1, p2}, time.Second, Options{MinSimilarity: 0.9})
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if len(finals) != 1 || finals[0] != filepath.Join(dir, "5_v1.png") {
+		t.Fatalf("Merge = %v, want [5_v1.png]", finals)
+	}
+	if _, err := os.Stat(p2); err != nil {
+		t.Errorf("standalone page must be kept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "5.png")); !os.IsNotExist(err) {
+		t.Errorf("5.png must not exist (err = %v)", err)
 	}
 }
 
