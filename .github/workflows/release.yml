@@ -26,25 +26,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux, goarch: "386", name: linux_x86, nfpm_arch: "386" }
-          - { goos: linux, goarch: amd64, name: linux_x64, nfpm_arch: amd64 }
-          - { goos: linux, goarch: arm64, name: linux_aarch64, nfpm_arch: arm64 }
-          - { goos: linux, goarch: arm, goarm: "7", name: linux_armv7, nfpm_arch: arm }
-          - { goos: windows, goarch: "386", name: windows_x86, tess: "w32 5.3.0.20221222", tess_hash: "33d7824a440e1660b74dc55f10355b346a22fdbe430143f7f6885cfa3cfdf7e7" }
-          - { goos: windows, goarch: amd64, name: windows_x64, tess: "w64 5.4.0.20240606", tess_hash: "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9" }
-          - { goos: windows, goarch: arm64, name: windows_aarch64 }
-          - { goos: darwin, goarch: amd64, name: macos_x64 }
-          - { goos: darwin, goarch: arm64, name: macos_aarch64 }
+          - { goos: linux }
+          - { goos: windows }
+          - { goos: darwin }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
-      - name: Install nfpm
-        if: matrix.goos == 'linux'
+      - name: Install packaging tools
         run: |
           set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils
           curl -fsSL -o /tmp/nfpm.tar.gz \
             "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
           curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/checksums.txt \
@@ -53,81 +47,112 @@ jobs:
       - name: Build
         # CGO is disabled so every binary is fully static. The Linux builds
         # therefore run on both glibc and musl distributions and no separate
-        # libc variants are needed.
+        # libc variants are needed. Each GOOS job loops over its architectures
+        # serially: the compiler already uses every core per target, and one
+        # job per GOOS keeps the environment setup (checkout, Go toolchain,
+        # apt) to a third of what a per-architecture matrix would spend.
         env:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          GOARM: ${{ matrix.goarm }}
           VERSION: ${{ github.ref_name }}
-          NFPM_ARCH: ${{ matrix.nfpm_arch }}
-          NFPM_VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils
           version="${VERSION#v}"
-          if [ -n "$NFPM_VERSION" ]; then
-            NFPM_VERSION="${version}"
-          fi
           ext=""
           if [ "$GOOS" = "windows" ]; then
             ext=".exe"
           fi
-          mkdir -p "dist/${{ matrix.name }}"
-          go build -trimpath -ldflags "-s -w -X main.version=${version}" \
-            -o "dist/${{ matrix.name }}/randamu${ext}" .
-          cp README.md LICENSE "dist/${{ matrix.name }}/"
+
+          # Download and prune the tesseract installers once; both x86 and
+          # x64 stages copy from these trees.
+          declare -A tess_dirs
           if [ "$GOOS" = "windows" ]; then
-            cp contrib/windows/install.ps1 contrib/windows/uninstall.ps1 "dist/${{ matrix.name }}/"
-          fi
-          # Windows x64/x86 ship a bundled tesseract (with its DLL dependency
-          # closure and the English model) so skip_promo_text works without
-          # installing anything. There is no official Windows arm64 build,
-          # so that archive relies on tesseract in PATH.
-          if [ -n "${{ matrix.tess }}" ]; then
-            set -- ${{ matrix.tess }}   # tess: "<arch> <version>"
-            installer="/tmp/tesseract-$1.exe"
-            curl -fsSL -o "$installer" \
-              "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-$1-setup-$2.exe"
-            echo "${{ matrix.tess_hash }}  $installer" | sha256sum -c -
-            # The installer is an NSIS archive; 7z extracts it without running it.
-            mkdir /tmp/tesseract
-            7z x -o/tmp/tesseract "$installer" > /dev/null
-            # Drop the ~160MB of unrelated tooling the installer carries and
-            # keep only the DLLs tesseract.exe loads, directly or transitively.
-            python3 .github/scripts/prune_tesseract.py /tmp/tesseract
-            # Strip debug symbols: shrinks the bundle ~5x, imports untouched.
-            for f in /tmp/tesseract/tesseract.exe /tmp/tesseract/*.dll; do
-              objcopy --strip-all "$f"
+            for spec in "w32 5.3.0.20221222 33d7824a440e1660b74dc55f10355b346a22fdbe430143f7f6885cfa3cfdf7e7" \
+                        "w64 5.4.0.20240606 c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9"; do
+              read -r arch tessver hash <<< "$spec"
+              installer="/tmp/tesseract-$arch.exe"
+              curl -fsSL -o "$installer" \
+                "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-$arch-setup-$tessver.exe"
+              echo "$hash  $installer" | sha256sum -c -
+              # The installer is an NSIS archive; 7z extracts it without running it.
+              mkdir "/tmp/tesseract-$arch"
+              7z x -o"/tmp/tesseract-$arch" "$installer" > /dev/null
+              # Drop the ~160MB of unrelated tooling the installer carries and
+              # keep only the DLLs tesseract.exe loads, directly or transitively.
+              python3 .github/scripts/prune_tesseract.py "/tmp/tesseract-$arch"
+              # Strip debug symbols: shrinks the bundle ~5x, imports untouched.
+              for f in "/tmp/tesseract-$arch/tesseract.exe" "/tmp/tesseract-$arch"/*.dll; do
+                objcopy --strip-all "$f"
+              done
+              tess_dirs[$arch]="/tmp/tesseract-$arch"
             done
-            bundle="dist/${{ matrix.name }}/tesseract"
-            cp THIRD-PARTY-NOTICES.md "dist/${{ matrix.name }}/"
-            mkdir -p "$bundle/tessdata"
-            cp /tmp/tesseract/tesseract.exe /tmp/tesseract/*.dll "$bundle/"
-            cp /tmp/tesseract/tessdata/eng.traineddata "$bundle/tessdata/"
-            cp -r /tmp/tesseract/tessdata/configs "$bundle/tessdata/"
-            cp /tmp/tesseract/doc/LICENSE "$bundle/LICENSE"
-            rm -rf /tmp/tesseract "$installer"
           fi
-          if [ "$GOOS" = "windows" ]; then
-            (cd dist && zip -qr "randamu_${version}_${{ matrix.name }}.zip" "${{ matrix.name }}")
-          else
-            tar -C dist -czf "dist/randamu_${version}_${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
-          fi
-          # deb/rpm for the common Linux architectures; nfpm expands
-          # ${NFPM_ARCH}/${NFPM_VERSION} from this environment.
-          if [ "$GOOS" = "linux" ] && [ -n "${{ matrix.nfpm_arch }}" ]; then
-            cp "dist/${{ matrix.name }}/randamu" ./randamu
-            nfpm package -f packaging/nfpm.yaml -p deb \
-              -t "dist/randamu_${version}_${{ matrix.name }}.deb"
-            nfpm package -f packaging/nfpm.yaml -p rpm \
-              -t "dist/randamu_${version}_${{ matrix.name }}.rpm"
-            rm ./randamu
-          fi
-          rm -rf "dist/${{ matrix.name }}"
+
+          build_one() {
+            local goarch="$1" goarm="$2" name="$3" nfpm_arch="$4" tess="$5"
+            local dir="dist/$name"
+            mkdir -p "$dir"
+            env GOARCH="$goarch" GOARM="${goarm:-}" \
+              go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+              -o "$dir/randamu$ext" .
+            cp README.md LICENSE "$dir/"
+            if [ "$GOOS" = "windows" ]; then
+              cp contrib/windows/install.ps1 contrib/windows/uninstall.ps1 "$dir/"
+            fi
+            if [ -n "$tess" ]; then
+              # Windows x64/x86 ship a bundled tesseract (with its DLL
+              # dependency closure and the English model) so skip_promo_text
+              # works without installing anything. There is no official
+              # Windows arm64 build, so that archive relies on tesseract in
+              # PATH.
+              local bundle="$dir/tesseract"
+              cp THIRD-PARTY-NOTICES.md "$dir/"
+              mkdir -p "$bundle/tessdata"
+              cp "${tess_dirs[$tess]}/tesseract.exe" "${tess_dirs[$tess]}"/*.dll "$bundle/"
+              cp "${tess_dirs[$tess]}/tessdata/eng.traineddata" "$bundle/tessdata/"
+              cp -r "${tess_dirs[$tess]}/tessdata/configs" "$bundle/tessdata/"
+              cp "${tess_dirs[$tess]}/doc/LICENSE" "$bundle/LICENSE"
+            fi
+            if [ "$GOOS" = "windows" ]; then
+              (cd dist && zip -qr "randamu_${version}_${name}.zip" "$name")
+            else
+              tar -C dist -czf "dist/randamu_${version}_${name}.tar.gz" "$name"
+            fi
+            if [ "$GOOS" = "linux" ] && [ -n "$nfpm_arch" ]; then
+              # deb/rpm; nfpm expands ${NFPM_ARCH}/${NFPM_VERSION} from the
+              # environment and reads relative paths from the repo root.
+              cp "$dir/randamu" ./randamu
+              NFPM_ARCH="$nfpm_arch" NFPM_VERSION="$version" \
+                nfpm package -f packaging/nfpm.yaml -p deb \
+                -t "dist/randamu_${version}_${name}.deb"
+              NFPM_ARCH="$nfpm_arch" NFPM_VERSION="$version" \
+                nfpm package -f packaging/nfpm.yaml -p rpm \
+                -t "dist/randamu_${version}_${name}.rpm"
+              rm ./randamu
+            fi
+            rm -rf "$dir"
+          }
+
+          case "$GOOS" in
+            linux)
+              build_one "386"  "" linux_x86      "386"  ""
+              build_one amd64 "" linux_x64      amd64  ""
+              build_one arm64 "" linux_aarch64  arm64  ""
+              build_one arm   "7" linux_armv7   arm    ""
+              ;;
+            windows)
+              build_one "386"  "" windows_x86     ""      w32
+              build_one amd64 "" windows_x64     ""      w64
+              build_one arm64 "" windows_aarch64 ""      ""
+              ;;
+            darwin)
+              build_one amd64 "" macos_x64      ""     ""
+              build_one arm64 "" macos_aarch64  ""     ""
+              ;;
+          esac
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.name }}
+          name: ${{ matrix.goos }}
           path: dist/*
           if-no-files-found: error
 
