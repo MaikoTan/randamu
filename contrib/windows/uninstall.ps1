@@ -1,4 +1,4 @@
-# Removes the scheduled task registered by install.ps1.
+﻿# Removes the scheduled task registered by install.ps1.
 [CmdletBinding()]
 param()
 

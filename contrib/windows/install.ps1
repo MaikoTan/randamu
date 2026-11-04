@@ -1,4 +1,4 @@
-# Registers a scheduled task that runs randamu daily. The task runs as the
+﻿# Registers a scheduled task that runs randamu daily. The task runs as the
 # current user, so no administrator prompt appears.
 #
 #   powershell -ExecutionPolicy Bypass -File install.ps1 [-ConfigPath PATH] [-At TIME] [-RandomDelay HH:MM:SS]
