@@ -10,7 +10,7 @@
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "1.1.0";
+        version = "1.2.0";
 
         randamu = pkgs.buildGoModule {
           pname = "randamu";
