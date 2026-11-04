@@ -96,6 +96,7 @@ func run() int {
 		logger.Error("failed to create HTTP client", "error", err)
 		return 2
 	}
+	logger.Info("HTTP client created", "proxy", cfg.Proxy)
 
 	client, err := pixiv.New(pixiv.Options{
 		HTTPClient:        httpClient,
@@ -505,7 +506,7 @@ func newHTTPClient(proxy string) (*http.Client, error) {
 	} else {
 		transport.Proxy = http.ProxyFromEnvironment
 	}
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
 }
 
 func newLogger(level string) *slog.Logger {

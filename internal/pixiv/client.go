@@ -157,7 +157,7 @@ func (c *Client) Login(ctx context.Context, refreshToken string) error {
 			RefreshToken string `json:"refresh_token"`
 			ExpiresIn    int    `json:"expires_in"`
 			User         struct {
-				ID int64 `json:"id"`
+				ID json.Number `json:"id"`
 			} `json:"user"`
 		} `json:"response"`
 	}
@@ -167,10 +167,14 @@ func (c *Client) Login(ctx context.Context, refreshToken string) error {
 	if r.Response.AccessToken == "" {
 		return errors.New("login response has no access_token")
 	}
+	userID, err := r.Response.User.ID.Int64()
+	if err != nil {
+		return fmt.Errorf("parse user id: %w", err)
+	}
 
 	c.mu.Lock()
 	c.accessToken = r.Response.AccessToken
-	c.userID = r.Response.User.ID
+	c.userID = userID
 	rotated := r.Response.RefreshToken
 	if rotated != "" {
 		c.refreshToken = rotated
