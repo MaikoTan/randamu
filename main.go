@@ -23,6 +23,7 @@ import (
 	"github.com/MaikoTan/randamu/internal/filter"
 	"github.com/MaikoTan/randamu/internal/pixiv"
 	"github.com/MaikoTan/randamu/internal/promo"
+	"github.com/MaikoTan/randamu/internal/retention"
 	"github.com/MaikoTan/randamu/internal/state"
 	"github.com/MaikoTan/randamu/internal/variation"
 )
@@ -196,6 +197,20 @@ func run() int {
 		if err != nil {
 			logger.Error("source failed", "source", sourceKey(src), "error", err)
 			failures++
+		}
+	}
+
+	if cfg.MaxSizeMB > 0 || cfg.MaxAgeDays > 0 {
+		deleted, err := retention.Prune(cfg.ImagesDir, retention.Options{
+			MaxSizeMB:  cfg.MaxSizeMB,
+			MaxAgeDays: cfg.MaxAgeDays,
+		}, time.Now(), *dryRun, logger)
+		if err != nil {
+			logger.Error("retention failed", "error", err)
+			failures++
+		}
+		if len(deleted) > 0 {
+			logger.Info("retention removed files", "count", len(deleted), "dry_run", *dryRun)
 		}
 	}
 

@@ -99,6 +99,8 @@ and the file overrides built-in defaults:
   "variation_min_similarity": 0.9,
   "variation_delay_ms": 1000,
   "variation_match_character": true,
+  "max_size_mb": 0,
+  "max_age_days": 0,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
@@ -187,6 +189,23 @@ downloaded again. APNG stores every frame at full resolution, so the merged
 file is roughly the size of all its pages together. WebP pages cannot be
 decoded by the Go standard library and are never merged.
 
+### Retention
+
+Downloads are otherwise never deleted, so the image directory grows with every
+run. Two optional limits prune it after each run (both off by default):
+
+- `max_size_mb` — when the downloaded files exceed this many MiB, the oldest
+  files are deleted first until the directory fits.
+- `max_age_days` — downloaded files older than this many days are deleted.
+
+Only files randamu created are considered, recognised by their names
+(`{id}_p{n}.{ext}`, merged `{id}.png` / `{id}_v{n}.png`); anything else in the
+directory is left alone. Orphan `.part` files left by an interrupted download
+that are older than 24 hours are removed whenever either limit is set.
+
+Files that belong to a work still seen in a source may be downloaded again on
+a later run once retention removed them.
+
 ### Token sources
 
 Tried in order:
@@ -209,7 +228,7 @@ state directory with mode `0600`.
 --concurrency N             parallel downloads
 --refresh-token-file PATH   file containing the refresh token
 --source TYPE               only run this source type (repeatable)
---dry-run                   list what would be downloaded, write nothing
+--dry-run                   list what would be downloaded or deleted, write nothing
 --log-level LEVEL           debug|info|warn|error
 --version
 ```

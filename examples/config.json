@@ -17,6 +17,8 @@
   "variation_min_similarity": 0.9,
   "variation_delay_ms": 1000,
   "variation_match_character": true,
+  "max_size_mb": 0,
+  "max_age_days": 0,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },

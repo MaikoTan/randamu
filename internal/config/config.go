@@ -59,10 +59,18 @@ type Config struct {
 	// the same clothing and hair colors in the same place, even if the
 	// background or framing changed. It ignores neutral background colors, so
 	// it still works when the face is hidden.
-	VariationCharacterMatch bool     `json:"variation_match_character"`
-	BlacklistTags           []string `json:"blacklist_tags"`
-	APIRequestsPerSecond    float64  `json:"api_requests_per_second"`
-	Sources                 []Source `json:"sources"`
+	VariationCharacterMatch bool `json:"variation_match_character"`
+	// MaxSizeMB caps the total size of the downloaded files, in MiB. When the
+	// directory grows past it, the oldest files are deleted first. 0 (the
+	// default) disables the check.
+	MaxSizeMB int64 `json:"max_size_mb"`
+	// MaxAgeDays deletes downloaded files older than this many days. 0 (the
+	// default) disables the check. Both limits keep only files randamu itself
+	// downloaded; anything else in the directory is left alone.
+	MaxAgeDays           int      `json:"max_age_days"`
+	BlacklistTags        []string `json:"blacklist_tags"`
+	APIRequestsPerSecond float64  `json:"api_requests_per_second"`
+	Sources              []Source `json:"sources"`
 }
 
 // Default returns the built-in default configuration.
@@ -172,6 +180,9 @@ func (c *Config) Validate() error {
 	}
 	if c.VariationDelayMS <= 0 {
 		c.VariationDelayMS = 1000
+	}
+	if c.MaxSizeMB < 0 || c.MaxAgeDays < 0 {
+		return fmt.Errorf("max_size_mb and max_age_days must not be negative")
 	}
 	for i := range c.Sources {
 		s := &c.Sources[i]
