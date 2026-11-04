@@ -26,7 +26,19 @@ if (-not (Test-Path $ConfigPath)) {
 
 $action = New-ScheduledTaskAction -Execute $exe -Argument "--config `"$ConfigPath`""
 $trigger = New-ScheduledTaskTrigger -Daily -At $At
-$trigger.RandomDelay = $RandomDelay
+# 任务 XML 里的 RandomDelay 是 ISO 8601 duration（如 PT1H），
+# 直接赋 HH:MM:SS 字符串会被任务计划程序拒绝（0x80041318）。
+$delay = [TimeSpan]::Parse($RandomDelay)
+if ($delay -lt [TimeSpan]::Zero) {
+    throw "-RandomDelay must not be negative"
+}
+$iso = "P"
+if ($delay.Days -gt 0) { $iso += "$($delay.Days)D" }
+$iso += "T"
+if ($delay.Hours -gt 0) { $iso += "$($delay.Hours)H" }
+if ($delay.Minutes -gt 0) { $iso += "$($delay.Minutes)M" }
+if ($delay.Seconds -gt 0 -or $iso.EndsWith("T")) { $iso += "$($delay.Seconds)S" }
+$trigger.RandomDelay = $iso
 # Run only with a network connection; the token comes from the config's
 # token sources, not from the task.
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
