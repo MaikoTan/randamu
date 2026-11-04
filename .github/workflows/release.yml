@@ -148,7 +148,8 @@ jobs:
               pkgbuild --root "$root" --identifier "com.maikotan.randamu" \
                 --version "$version" --install-location / \
                 "dist/randamu_${version}_${name}.pkg"
-              rm -rf "$root"
+              # The tree is root-owned after the chown above.
+              sudo rm -rf "$root"
             fi
             if [ "$GOOS" = "linux" ] && [ -n "$nfpm_arch" ]; then
               # deb/rpm; nfpm expands ${NFPM_ARCH}/${NFPM_VERSION} from the
