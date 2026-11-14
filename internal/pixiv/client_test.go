@@ -250,20 +250,22 @@ func TestResolveRefreshTokenPrecedence(t *testing.T) {
 	t.Setenv("PIXIV_REFRESH_TOKEN", envFile)
 	got, err = ResolveRefreshToken("", stateDir)
 	if err != nil || got != envFile {
-		t.Fatalf("environment variable takes precedence over credential: %q, %v", got, err)
+		t.Fatalf("environment variable takes precedence: %q, %v", got, err)
 	}
 
 	t.Setenv("PIXIV_REFRESH_TOKEN", "")
 	t.Setenv("CREDENTIALS_DIRECTORY", credDir)
 	got, err = ResolveRefreshToken("", stateDir)
-	if err != nil || got != "cred-token" {
-		t.Fatalf("credential: %q, %v", got, err)
+	if err != nil || got != "state-token" {
+		t.Fatalf("rotated state token takes precedence over credential: %q, %v", got, err)
 	}
 
-	t.Setenv("CREDENTIALS_DIRECTORY", "")
+	if err := os.Remove(filepath.Join(stateDir, "refresh_token")); err != nil {
+		t.Fatal(err)
+	}
 	got, err = ResolveRefreshToken("", stateDir)
-	if err != nil || got != "state-token" {
-		t.Fatalf("state directory: %q, %v", got, err)
+	if err != nil || got != "cred-token" {
+		t.Fatalf("credential: %q, %v", got, err)
 	}
 }
 

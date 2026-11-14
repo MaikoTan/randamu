@@ -212,8 +212,8 @@ Tried in order:
 
 1. `--refresh-token-file <path>`
 2. `PIXIV_REFRESH_TOKEN`
-3. `$CREDENTIALS_DIRECTORY/pixiv_refresh_token` (systemd `LoadCredential`)
-4. `<state_dir>/refresh_token` (rotated token from a previous run)
+3. `<state_dir>/refresh_token` (rotated token from a previous run)
+4. `$CREDENTIALS_DIRECTORY/pixiv_refresh_token` (systemd `LoadCredential`)
 
 If pixiv rotates the refresh token, the new value is written atomically to the
 state directory with mode `0600`.

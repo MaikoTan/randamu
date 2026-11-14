@@ -8,7 +8,7 @@ import (
 )
 
 // ResolveRefreshToken looks up the refresh token in priority order:
-// explicit file, PIXIV_REFRESH_TOKEN, systemd credential, state directory.
+// explicit file, PIXIV_REFRESH_TOKEN, rotated state token, systemd credential.
 func ResolveRefreshToken(explicitPath, stateDir string) (string, error) {
 	if explicitPath != "" {
 		return readTokenFile(explicitPath)
@@ -16,13 +16,15 @@ func ResolveRefreshToken(explicitPath, stateDir string) (string, error) {
 	if v := strings.TrimSpace(os.Getenv("PIXIV_REFRESH_TOKEN")); v != "" {
 		return v, nil
 	}
-	if dir := os.Getenv("CREDENTIALS_DIRECTORY"); dir != "" {
-		if tok, err := readTokenFile(filepath.Join(dir, "pixiv_refresh_token")); err == nil {
+	// 轮换后的 token 必须优先于凭证：pixiv 每次登录都会作废旧 token，
+	// 凭证里的初始 token 只在首次运行前有效。
+	if stateDir != "" {
+		if tok, err := readTokenFile(filepath.Join(stateDir, "refresh_token")); err == nil {
 			return tok, nil
 		}
 	}
-	if stateDir != "" {
-		if tok, err := readTokenFile(filepath.Join(stateDir, "refresh_token")); err == nil {
+	if dir := os.Getenv("CREDENTIALS_DIRECTORY"); dir != "" {
+		if tok, err := readTokenFile(filepath.Join(dir, "pixiv_refresh_token")); err == nil {
 			return tok, nil
 		}
 	}
