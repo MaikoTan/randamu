@@ -19,6 +19,8 @@
   "variation_match_character": true,
   "max_size_mb": 0,
   "max_age_days": 0,
+  "webp": true,
+  "webp_quality": 85,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
@@ -30,6 +32,9 @@
       "sort": "popular_desc",
       "limit": 100
     },
-    { "type": "recommended", "limit": 100 }
+    { "type": "recommended", "limit": 100 },
+    { "type": "lolicon", "tags": ["風景"], "rating": "safe", "limit": 20 },
+    { "type": "konachan", "tags": ["scenic"], "rating": "safe", "limit": 20 },
+    { "type": "danbooru", "tags": ["landscape"], "rating": "safe", "limit": 20 }
   ]
 }

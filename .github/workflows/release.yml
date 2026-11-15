@@ -101,7 +101,7 @@ jobs:
             local dir="dist/$name"
             mkdir -p "$dir"
             env GOARCH="$goarch" GOARM="${goarm:-}" \
-              go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+              go build -tags nodynamic -trimpath -ldflags "-s -w -X main.version=${version}" \
               -o "$dir/randamu$ext" .
             cp README.md LICENSE "$dir/"
             if [ "$GOOS" = "windows" ]; then

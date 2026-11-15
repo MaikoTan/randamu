@@ -20,6 +20,14 @@ type Source struct {
 	SearchTarget string `json:"search_target,omitempty"`
 	Sort         string `json:"sort,omitempty"`
 	Duration     string `json:"duration,omitempty"`
+	// Tags is a multi-tag query for lolicon/konachan/danbooru sources.
+	Tags []string `json:"tags,omitempty"`
+	// Rating is the content rating filter: safe, questionable or explicit.
+	Rating string `json:"rating,omitempty"`
+	// Random picks a random page instead of paging through results.
+	Random bool `json:"random,omitempty"`
+	// APIBase overrides the API root of the source.
+	APIBase string `json:"api_base,omitempty"`
 	// Limit is the maximum number of works handled per run for this source.
 	Limit int `json:"limit,omitempty"`
 }
@@ -67,7 +75,12 @@ type Config struct {
 	// MaxAgeDays deletes downloaded files older than this many days. 0 (the
 	// default) disables the check. Both limits keep only files randamu itself
 	// downloaded; anything else in the directory is left alone.
-	MaxAgeDays           int      `json:"max_age_days"`
+	MaxAgeDays int `json:"max_age_days"`
+	// WebP 为 true 时把下载的 JPEG/PNG 转码为 WebP 以节省空间（默认开启）。
+	// GIF（可能是动图）与已是 WebP 的文件保持原样。
+	WebP bool `json:"webp"`
+	// WebPQuality 是转码质量（1-100，默认 85）。
+	WebPQuality          int      `json:"webp_quality"`
 	BlacklistTags        []string `json:"blacklist_tags"`
 	APIRequestsPerSecond float64  `json:"api_requests_per_second"`
 	Sources              []Source `json:"sources"`
@@ -93,6 +106,8 @@ func Default() *Config {
 		VariationMinSimilarity:  0.9,
 		VariationDelayMS:        1000,
 		VariationCharacterMatch: true,
+		WebP:                    true,
+		WebPQuality:             85,
 		BlacklistTags:           []string{"漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"},
 		APIRequestsPerSecond:    2,
 		Sources: []Source{
@@ -146,6 +161,14 @@ func (c *Config) ApplyEnv() {
 	if v := os.Getenv("RANDAMU_PROXY"); v != "" {
 		c.Proxy = v
 	}
+	if v := os.Getenv("RANDAMU_WEBP"); v != "" {
+		switch strings.ToLower(v) {
+		case "0", "false", "no", "off":
+			c.WebP = false
+		case "1", "true", "yes", "on":
+			c.WebP = true
+		}
+	}
 }
 
 // Validate checks the configuration and fills in defaults for missing fields.
@@ -181,6 +204,9 @@ func (c *Config) Validate() error {
 	if c.VariationDelayMS <= 0 {
 		c.VariationDelayMS = 1000
 	}
+	if c.WebPQuality <= 0 || c.WebPQuality > 100 {
+		c.WebPQuality = 85
+	}
 	if c.MaxSizeMB < 0 || c.MaxAgeDays < 0 {
 		return fmt.Errorf("max_size_mb and max_age_days must not be negative")
 	}
@@ -206,6 +232,14 @@ func (c *Config) Validate() error {
 			}
 			if s.Sort == "" {
 				s.Sort = "popular_desc"
+			}
+		case "lolicon", "konachan", "danbooru":
+			if s.Rating != "" {
+				switch s.Rating {
+				case "safe", "questionable", "explicit":
+				default:
+					return fmt.Errorf("sources[%d]: rating must be safe, questionable or explicit", i)
+				}
 			}
 		case "recommended":
 		default:

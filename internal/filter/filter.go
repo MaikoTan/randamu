@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/MaikoTan/randamu/internal/pixiv"
+	"github.com/MaikoTan/randamu/internal/source"
 )
 
 // Options are the filter options.
@@ -14,6 +15,36 @@ type Options struct {
 	SkipR18G     bool
 	MaxPageCount int
 	Blacklist    []string
+}
+
+// SkipWork 判断一个图源无关的作品是否应跳过，返回原因。
+func SkipWork(w source.Work, o Options) (bool, string) {
+	if w.Kind == "ugoira" {
+		return true, "ugoira"
+	}
+	if o.SkipAI && w.AI {
+		return true, "AI generated"
+	}
+	if o.SkipR18G && w.XRestrict > 1 {
+		return true, "R18G"
+	}
+	if o.SkipR18 && w.XRestrict == 1 {
+		return true, "R18"
+	}
+	for _, t := range w.Tags {
+		for _, b := range o.Blacklist {
+			if b == "" {
+				continue
+			}
+			if containsFold(t, b) {
+				return true, "blacklisted tag " + b
+			}
+		}
+	}
+	if o.MaxPageCount > 0 && w.PageCount > o.MaxPageCount {
+		return true, "too many pages"
+	}
+	return false, ""
 }
 
 // Skip reports whether a work should be skipped and the reason.

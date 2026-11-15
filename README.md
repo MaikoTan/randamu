@@ -1,18 +1,25 @@
 # Randamu
 
-A single-binary, idempotent pixiv image fetcher. It periodically downloads images
-from your bookmarks, tag searches and the recommendation feed into a local
-directory, so a wallpaper tool can simply pick a random file from disk.
+A single-binary, idempotent image fetcher. It periodically downloads images
+from pixiv (bookmarks, tag searches, the recommendation feed) and from the
+unauthenticated lolicon / konachan / danbooru sources into a local directory,
+so a wallpaper tool can simply pick a random file from disk.
 
 This replaces the old Python/FastAPI random-wallpaper service.
 
 ## Features
 
-- Sources: public bookmarks, private bookmarks, tag search and the recommended feed
-- Idempotent: files are named after the illust id, so re-runs skip everything already downloaded
+- Sources: pixiv public/private bookmarks, tag search and the recommended
+  feed; plus lolicon, konachan and danbooru (no pixiv token needed for those)
+- Idempotent: files are named after the source and work id, so re-runs skip
+  everything already downloaded
+- WebP conversion on by default: downloads are transcoded to WebP to save
+  disk space (configurable quality, can be disabled)
+- Source metadata is embedded inside each image file (JPEG COM, PNG tEXt,
+  WebP XMP) so files are recognisable as randamu output
 - Reliable downloads: bounded concurrency, retries with backoff, `Range` resume for partial files
 - Optional proxy support (`http`, `https`, `socks5`)
-- Zero third-party Go dependencies — one static binary, low memory
+- Pure-Go, one static binary, low memory
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
 - Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
@@ -20,8 +27,9 @@ This replaces the old Python/FastAPI random-wallpaper service.
 
 ## Requirements
 
-- Go 1.24+ (or Nix)
-- A pixiv refresh token
+- Go 1.25+ (or Nix)
+- A pixiv refresh token — **only** if you use pixiv sources; lolicon,
+  konachan and danbooru need no authentication
 - Optional: a proxy if pixiv is unreachable from your network
 - Optional: `tesseract` for the promo-text check. The Windows x64/x86 release
   archives already include it under `tesseract/`; the Windows arm64 archive and
@@ -60,13 +68,17 @@ systemd credential.
 
 ```bash
 nix build            # ./result/bin/randamu
-# or
-go build -trimpath -o randamu .
+# or (CGO off + nodynamic keeps the binary static)
+CGO_ENABLED=0 go build -tags nodynamic -trimpath -o randamu .
 ```
+
+The `nodynamic` build tag makes the pure-Go WebP backend (WASM) be used
+instead of dlopen-ing a system libwebp, so the binary stays static.
 
 ## Usage
 
 ```bash
+# pixiv 图源需要 token；仅用 lolicon/konachan/danbooru 时可省略
 export PIXIV_REFRESH_TOKEN="..."
 randamu --config examples/config.json
 ```
@@ -101,6 +113,8 @@ and the file overrides built-in defaults:
   "variation_match_character": true,
   "max_size_mb": 0,
   "max_age_days": 0,
+  "webp": true,
+  "webp_quality": 85,
   "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
@@ -112,15 +126,39 @@ and the file overrides built-in defaults:
       "sort": "popular_desc",
       "limit": 100
     },
-    { "type": "recommended", "limit": 100 }
+    { "type": "recommended", "limit": 100 },
+    { "type": "lolicon", "tags": ["風景"], "rating": "safe", "limit": 20 },
+    { "type": "konachan", "tags": ["scenic"], "rating": "safe", "limit": 20 },
+    { "type": "danbooru", "tags": ["landscape"], "rating": "safe", "limit": 20 }
   ]
 }
 ```
 
+### Sources
+
+Each entry in `sources` has a `type`:
+
+- `bookmarks` (`restrict`: `public` / `private`), `search` (`tag`, `search_target`, `sort`, `duration`),
+  `recommended` — pixiv sources; **require** a pixiv refresh token.
+- `lolicon` — random works from the lolicon v2 API (`tags`, `rating`).
+- `konachan`, `danbooru` — tag search / newest / random (`tags`, `rating`, `random`).
+
+The non-pixiv sources accept extra fields:
+
+| Field | Meaning |
+|---|---|
+| `tags` | tag list (konachan/danbooru join them with spaces) |
+| `rating` | `safe`, `questionable` or `explicit` |
+| `random` | pick a random page instead of paging forward |
+| `api_base` | override the API root (mirrors); image host allowlist is then relaxed |
+
+If any selected source is a pixiv type, a pixiv token is required; otherwise
+randamu runs without one.
+
 Config path resolution: `--config` > `$RANDAMU_CONFIG` > `$XDG_CONFIG_HOME/randamu/config.json`.
 
 Environment variables: `PIXIV_REFRESH_TOKEN`, `RANDAMU_CONFIG`, `RANDAMU_IMAGES_DIR`,
-`RANDAMU_STATE_DIR`, `RANDAMU_PROXY`.
+`RANDAMU_STATE_DIR`, `RANDAMU_PROXY`, `RANDAMU_WEBP`.
 
 ### Content analysis
 
@@ -149,9 +187,9 @@ checks are pure Go; the optional promo-text check shells out to `tesseract`:
   `services.randamu.extraPackages = [ pkgs.tesseract ];`.
 
 Analysis runs once per downloaded file and never re-downloads: rejected
-illust ids are remembered in `state.json` and skipped on later runs.
-Undecodable formats (e.g. WebP, which the Go standard library cannot read)
-are kept unchanged.
+illust ids are remembered in `state.json` and skipped on later runs. Analysis
+runs on the original download, before WebP conversion; undecodable formats are
+kept unchanged.
 
 ### Variation merging (差分)
 
@@ -199,14 +237,43 @@ run. Two optional limits prune it after each run (both off by default):
 - `max_age_days` — downloaded files older than this many days are deleted.
 
 Only files randamu created are considered, recognised by their names
-(`{id}_p{n}.{ext}`, merged `{id}.png` / `{id}_v{n}.png`); anything else in the
-directory is left alone. Orphan `.part` files left by an interrupted download
-that are older than 24 hours are removed whenever either limit is set.
+(`{id}_p{n}.{ext}`, `{source}_{id}_p{n}.{ext}`, merged `{id}.png` /
+`{id}_v{n}.png`); anything else in the directory is left alone. Orphan `.part`
+files left by an interrupted download that are older than 24 hours are removed
+whenever either limit is set.
 
 Files that belong to a work still seen in a source may be downloaded again on
 a later run once retention removed them.
 
+### WebP conversion
+
+With `webp` enabled (the default), every downloaded JPEG or PNG is transcoded
+to WebP at `webp_quality` (default 85) before it is stored, and the file
+extension becomes `.webp`. This keeps the image directory small. GIF files
+(possibly animated) and files that are already WebP are stored unchanged. If a
+transcode fails the original file is kept and the run continues.
+
+Because WebP output cannot be decoded by the Go standard library, variation
+merging is skipped when `webp` is on, and content analysis runs on the original
+download before conversion. Disable WebP (`webp: false` or `--webp off`) if you
+need APNG variation merging.
+
+### Embedded source metadata
+
+Every stored file carries a compact `randamu:v1:{json}` payload identifying its
+source, work id, page, title, author, tags, original URL and download time. It
+is written into the image container without touching pixel data:
+
+- **JPEG** — a `COM` segment,
+- **PNG** — a `tEXt` chunk with keyword `Randamu`,
+- **WebP** — an XMP chunk (fourcc `XMP` + trailing space).
+
+The metadata both marks a file as randamu output and lets a future management
+tool recover where each image came from.
+
 ### Token sources
+
+Only pixiv sources need a token. Tried in order:
 
 Tried in order:
 
@@ -228,19 +295,25 @@ state directory with mode `0600`.
 --concurrency N             parallel downloads
 --refresh-token-file PATH   file containing the refresh token
 --source TYPE               only run this source type (repeatable)
+--webp on|off               convert downloads to WebP (default on)
+--webp-quality N            WebP quality 1-100 (default 85)
 --dry-run                   list what would be downloaded or deleted, write nothing
 --log-level LEVEL           debug|info|warn|error
 --version
 ```
 
 Exit codes: `0` success (including skips), `1` fatal, `2` invalid config,
-`3` authentication failure, `4` one or more downloads failed after retries.
+`3` authentication failure (pixiv sources only), `4` one or more downloads
+failed after retries.
 
 ## Idempotency
 
-- The final filename is the basename of the original pixiv URL
-  (`{illust_id}_p{n}.{ext}`), so existing files are skipped with a single `stat`.
+- pixiv files are named `{illust_id}_p{n}.{ext}`; other sources prefix the
+  source name (`{source}_{id}_p{n}.{ext}`) so numeric ids from different
+  sources do not collide. Existing files are skipped with a single `stat`.
   Files downloaded by the old fish/aria2c script are recognized.
+- When WebP conversion is on, an existing `.webp` file also counts as present,
+  so a work is not downloaded twice under different extensions.
 - Downloads are written to `<name>.part` and atomically renamed on success.
   Interrupted transfers resume with an HTTP `Range` request on the next run.
 - Per-source cursors live in `<state_dir>/state.json`; a page's cursor only
@@ -320,8 +393,10 @@ go test -race ./...
 
 - The refresh token is read from the environment or a systemd credential, never
   from the JSON config.
-- Image downloads are restricted to `https://i.pximg.net`, and pagination
-  cursors are restricted to the pixiv API host.
+- Image downloads are restricted to an allowlist of known image hosts (pixiv
+  `i.pximg.net`, konachan and danbooru CDNs); a source with a custom `api_base`
+  relaxes this to any `https` host. Pagination cursors are restricted to the
+  pixiv API host.
 - Downloaded files are validated by `Content-Type` and magic bytes.
 
 ## License

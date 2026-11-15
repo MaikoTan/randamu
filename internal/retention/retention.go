@@ -28,9 +28,10 @@ const partMaxAge = 24 * time.Hour
 
 var (
 	// pageFile matches a downloaded page, optionally still a .part file.
-	pageFile = regexp.MustCompile(`^\d+_p\d+\.(jpe?g|png|gif|webp)(\.part)?$`)
+	// 非 pixiv 图源的文件名带图源前缀，如 danbooru_123_p0.webp。
+	pageFile = regexp.MustCompile(`^([a-z]+_)?\d+_p\d+\.(jpe?g|png|gif|webp)(\.part)?$`)
 	// mergedFile matches a variation-merged APNG.
-	mergedFile = regexp.MustCompile(`^\d+(_v\d+)?\.png$`)
+	mergedFile = regexp.MustCompile(`^([a-z]+_)?\d+(_v\d+)?\.png$`)
 )
 
 // Prune deletes files that violate the limits, oldest first, and returns

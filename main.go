@@ -24,6 +24,7 @@ import (
 	"github.com/MaikoTan/randamu/internal/pixiv"
 	"github.com/MaikoTan/randamu/internal/promo"
 	"github.com/MaikoTan/randamu/internal/retention"
+	"github.com/MaikoTan/randamu/internal/source"
 	"github.com/MaikoTan/randamu/internal/state"
 	"github.com/MaikoTan/randamu/internal/variation"
 )
@@ -47,6 +48,8 @@ func run() int {
 		dryRun      = fs.Bool("dry-run", false, "list what would be downloaded without writing files")
 		logLevel    = fs.String("log-level", "info", "log level: debug|info|warn|error")
 		showVersion = fs.Bool("version", false, "print the version")
+		webpFlag    = fs.String("webp", "", "convert downloads to WebP: on|off (default on)")
+		webpQuality = fs.Int("webp-quality", 0, "WebP quality 1-100 (default 85)")
 	)
 	var sourceFlags multiFlag
 	fs.Var(&sourceFlags, "source", "only process this source type (repeatable)")
@@ -81,15 +84,23 @@ func run() int {
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency
 	}
+	if *webpFlag != "" {
+		switch strings.ToLower(*webpFlag) {
+		case "on", "1", "true", "yes":
+			cfg.WebP = true
+		case "off", "0", "false", "no":
+			cfg.WebP = false
+		default:
+			logger.Error("invalid --webp value", "value", *webpFlag)
+			return 2
+		}
+	}
+	if *webpQuality > 0 {
+		cfg.WebPQuality = *webpQuality
+	}
 	if err := cfg.Validate(); err != nil {
 		logger.Error("invalid config", "error", err)
 		return 2
-	}
-
-	token, err := pixiv.ResolveRefreshToken(*tokenFile, cfg.StateDir)
-	if err != nil {
-		logger.Error("failed to resolve refresh_token", "error", err)
-		return 3
 	}
 
 	httpClient, err := newHTTPClient(cfg.Proxy)
@@ -99,20 +110,48 @@ func run() int {
 	}
 	logger.Info("HTTP client created", "proxy", cfg.Proxy)
 
-	client, err := pixiv.New(pixiv.Options{
-		HTTPClient:        httpClient,
-		MaxRetries:        cfg.MaxRetries,
-		RequestsPerSecond: cfg.APIRequestsPerSecond,
-		TokenFile:         filepath.Join(cfg.StateDir, "refresh_token"),
-		Logger:            logger,
-	})
-	if err != nil {
-		logger.Error("failed to initialize pixiv client", "error", err)
-		return 1
+	// pixiv 图源才需要 refresh token 与登录；仅使用 lolicon/konachan/danbooru
+	// 等无需认证的图源时不要求 token。
+	sources := filterSources(cfg.Sources, sourceFlags)
+	if len(sources) == 0 {
+		logger.Error("no sources to process")
+		return 2
 	}
-	if err := client.Login(ctx, token); err != nil {
-		logger.Error("failed to log in to pixiv", "error", err)
-		return 3
+	needPixiv := false
+	for _, src := range sources {
+		if isPixivType(src.Type) {
+			needPixiv = true
+			break
+		}
+	}
+
+	var client *pixiv.Client
+	var userID int64
+	if needPixiv {
+		token, err := pixiv.ResolveRefreshToken(*tokenFile, cfg.StateDir)
+		if err != nil {
+			logger.Error("failed to resolve refresh_token", "error", err)
+			return 3
+		}
+		client, err = pixiv.New(pixiv.Options{
+			HTTPClient:        httpClient,
+			MaxRetries:        cfg.MaxRetries,
+			RequestsPerSecond: cfg.APIRequestsPerSecond,
+			TokenFile:         filepath.Join(cfg.StateDir, "refresh_token"),
+			Logger:            logger,
+		})
+		if err != nil {
+			logger.Error("failed to initialize pixiv client", "error", err)
+			return 1
+		}
+		if err := client.Login(ctx, token); err != nil {
+			logger.Error("failed to log in to pixiv", "error", err)
+			return 3
+		}
+		userID = cfg.UserID
+		if userID == 0 {
+			userID = client.UserID()
+		}
 	}
 
 	st, err := state.Load(cfg.StateDir)
@@ -128,13 +167,16 @@ func run() int {
 	defer release()
 
 	downloadOpts := download.Options{
-		Dir:         cfg.ImagesDir,
-		MaxRetries:  cfg.MaxRetries,
-		UserAgent:   pixiv.DefaultUserAgent,
-		Referer:     pixiv.DefaultReferer,
-		AllowedHost: "i.pximg.net",
-		HTTPClient:  httpClient,
-		Logger:      logger,
+		Dir:           cfg.ImagesDir,
+		MaxRetries:    cfg.MaxRetries,
+		UserAgent:     pixiv.DefaultUserAgent,
+		Referer:       pixiv.DefaultReferer,
+		AllowedHosts:  imageHostsFor(sources),
+		HTTPClient:    httpClient,
+		Logger:        logger,
+		ConvertWebP:   cfg.WebP,
+		WebPQuality:   cfg.WebPQuality,
+		EmbedMetadata: true,
 	}
 	if cfg.SkipQR || cfg.SkipMosaic || cfg.SkipBlur || cfg.SkipPromoText {
 		analyzeOpts := analyze.Options{
@@ -176,23 +218,12 @@ func run() int {
 		Blacklist:    cfg.BlacklistTags,
 	}
 
-	sources := filterSources(cfg.Sources, sourceFlags)
-	if len(sources) == 0 {
-		logger.Error("no sources to process")
-		return 2
-	}
-
-	userID := cfg.UserID
-	if userID == 0 {
-		userID = client.UserID()
-	}
-
 	failures := 0
 	for _, src := range sources {
 		if ctx.Err() != nil {
 			break
 		}
-		n, err := runSource(ctx, client, st, cfg, src, userID, downloader, filterOpts, logger, *dryRun)
+		n, err := runSource(ctx, client, httpClient, userID, st, cfg, src, downloader, filterOpts, logger, *dryRun)
 		failures += n
 		if err != nil {
 			logger.Error("source failed", "source", sourceKey(src), "error", err)
@@ -237,10 +268,11 @@ func run() int {
 func runSource(
 	ctx context.Context,
 	client *pixiv.Client,
+	httpClient *http.Client,
+	userID int64,
 	st *state.State,
 	cfg *config.Config,
 	src config.Source,
-	userID int64,
 	d *download.Downloader,
 	filterOpts filter.Options,
 	logger *slog.Logger,
@@ -250,35 +282,20 @@ func runSource(
 	processed := 0
 	failures := 0
 
+	srcImpl, err := newSource(src, client, httpClient, userID, st, logger)
+	if err != nil {
+		return failures, err
+	}
+
 	for processed < src.Limit {
-		var page pixiv.Page
-		var err error
-		switch src.Type {
-		case "bookmarks":
-			page, err = client.BookmarksPage(ctx, userID, src.Restrict, st.Cursors[key])
-		case "search":
-			page, err = client.SearchPage(ctx, pixiv.SearchParams{
-				Word:         src.Tag,
-				SearchTarget: src.SearchTarget,
-				Sort:         src.Sort,
-				Duration:     src.Duration,
-			}, st.Cursors[key])
-		case "recommended":
-			page, err = client.RecommendedPage(ctx, st.Offsets["recommended"], st.RecentViewed(200))
-		default:
-			return failures, fmt.Errorf("unknown source type %q", src.Type)
-		}
+		page, err := srcImpl.Fetch(ctx, st.Cursors[key])
 		if err != nil {
 			return failures, err
 		}
 
-		if len(page.Illusts) == 0 {
+		if len(page.Works) == 0 {
 			// No more content: reset the cursor so the next run starts from the newest items.
-			if src.Type == "recommended" {
-				st.Offsets["recommended"] = 0
-			} else {
-				delete(st.Cursors, key)
-			}
+			delete(st.Cursors, key)
 			break
 		}
 
@@ -286,53 +303,54 @@ func runSource(
 		// pageNames tracks the files of each multi-page work so its variation
 		// sets can be merged into APNGs after this page of jobs completes.
 		pageNames := make(map[int64][]string)
-		for _, illust := range page.Illusts {
+		for _, work := range page.Works {
 			if processed >= src.Limit {
 				break
 			}
 			processed++
-			if src.Type == "recommended" {
-				st.AddViewed(illust.ID, 500)
-			}
-			if skip, reason := filter.Skip(illust, filterOpts); skip {
-				logger.Debug("skipping work", "id", illust.ID, "reason", reason, "source", key)
+			if skip, reason := filter.SkipWork(work, filterOpts); skip {
+				logger.Debug("skipping work", "id", work.ID, "reason", reason, "source", key)
 				continue
 			}
-			if st.IsRejected(illust.ID) {
-				logger.Debug("skipping previously rejected work", "id", illust.ID, "source", key)
+			if st.IsRejected(work.ID) {
+				logger.Debug("skipping previously rejected work", "id", work.ID, "source", key)
 				continue
 			}
-			if cfg.MergeVariations {
-				if mergedExists(cfg.ImagesDir, illust.ID) {
-					logger.Debug("skipping merged work", "id", illust.ID, "source", key)
+			// WebP 转码开启时不做差分合并：合并需要逐页的原图参与 APNG。
+			if cfg.MergeVariations && !cfg.WebP {
+				if mergedExists(cfg.ImagesDir, work.ID) {
+					logger.Debug("skipping merged work", "id", work.ID, "source", key)
 					continue
 				}
 			}
 			var names []string
 			complete := true
-			for pageIdx, rawURL := range filter.OriginalURLs(illust) {
-				name, err := download.FileName(illust.ID, pageIdx, rawURL)
+			for _, img := range work.Pages {
+				name, err := download.FileNameFor(work.Source, work.ID, img.Index, img.URL)
 				if err != nil {
-					logger.Warn("cannot derive file name", "id", illust.ID, "error", err)
+					logger.Warn("cannot derive file name", "id", work.ID, "error", err)
 					complete = false
 					continue
 				}
 				names = append(names, name)
 				jobs = append(jobs, download.Job{
-					URL:      rawURL,
+					URL:      img.URL,
 					Filename: name,
-					Source:   key,
-					IllustID: illust.ID,
-					Page:     pageIdx,
+					Source:   work.Source,
+					IllustID: work.ID,
+					Page:     img.Index,
+					Title:    work.Title,
+					Author:   work.Author,
+					Tags:     work.Tags,
 				})
 			}
 			if complete && len(names) > 1 {
-				pageNames[illust.ID] = names
+				pageNames[work.ID] = names
 			}
 		}
 
 		pageFailures := runJobs(ctx, d, jobs, cfg.Concurrency, logger, dryRun, st)
-		if cfg.MergeVariations && !dryRun {
+		if cfg.MergeVariations && !cfg.WebP && !dryRun {
 			mergeVariations(cfg, pageNames, logger)
 		}
 		failures += pageFailures
@@ -344,15 +362,10 @@ func runSource(
 			return failures, nil
 		}
 
-		switch src.Type {
-		case "recommended":
-			st.Offsets["recommended"] += len(page.Illusts)
-		default:
-			if page.NextURL != "" {
-				st.Cursors[key] = page.NextURL
-			} else {
-				delete(st.Cursors, key)
-			}
+		if page.NextCursor != "" {
+			st.Cursors[key] = page.NextCursor
+		} else {
+			delete(st.Cursors, key)
 		}
 		if !dryRun {
 			if err := st.Save(cfg.StateDir); err != nil {
@@ -360,7 +373,7 @@ func runSource(
 			}
 		}
 
-		if src.Type != "recommended" && page.NextURL == "" {
+		if page.NextCursor == "" {
 			break
 		}
 		if ctx.Err() != nil {
@@ -504,9 +517,71 @@ func sourceKey(s config.Source) string {
 		return "bookmarks:" + s.Restrict
 	case "search":
 		return strings.Join([]string{"search", s.Tag, s.SearchTarget, s.Sort, s.Duration}, ":")
+	case "lolicon", "konachan", "danbooru":
+		// 用图源名 + 标签 + 评分区分不同查询的游标。
+		return strings.Join([]string{s.Type, strings.Join(s.Tags, "+"), s.Rating}, ":")
 	default:
 		return "recommended"
 	}
+}
+
+// imageHostsFor 根据选中的图源推导允许下载的图片主机白名单。
+// 自定义 api_base 的图源无法预知图片主机，此时回退为不限制主机。
+func imageHostsFor(sources []config.Source) []string {
+	set := make(map[string]struct{})
+	add := func(h string) { set[h] = struct{}{} }
+	for _, s := range sources {
+		if s.APIBase != "" {
+			// 自定义镜像的图片主机未知，放开限制（仍要求 https）。
+			return nil
+		}
+		switch s.Type {
+		case "bookmarks", "search", "recommended":
+			add("i.pximg.net")
+		case "lolicon":
+			// lolicon 返回 pixiv 原图 URL；经 proxy:"null" 直连 i.pximg.net。
+			add("i.pximg.net")
+		case "konachan":
+			add("konachan.net")
+			add("konachan.com")
+		case "danbooru":
+			add("danbooru.donmai.us")
+			add("cdn.donmai.us")
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	return out
+}
+
+// isPixivType 报告该 source 类型是否属于需要 pixiv 登录的图源。
+func isPixivType(t string) bool {
+	switch t {
+	case "bookmarks", "search", "recommended":
+		return true
+	}
+	return false
+}
+
+// newSource 按 source 类型构造实际的图源适配器。
+// pixiv 类型需要已登录的 client；其余图源只需 HTTP 客户端。
+func newSource(src config.Source, client *pixiv.Client, httpClient *http.Client, userID int64, st *state.State, logger *slog.Logger) (source.Source, error) {
+	if isPixivType(src.Type) {
+		if client == nil {
+			return nil, fmt.Errorf("pixiv source %q requires a logged-in client", src.Type)
+		}
+		ps := source.NewPixiv(client, src.Type, src, userID)
+		ps.Viewed = func() []int64 { return st.RecentViewed(200) }
+		ps.RecordViewed = func(id int64) { st.AddViewed(id, 500) }
+		return ps, nil
+	}
+	return source.New(src, source.Options{
+		Pixiv:  client,
+		HTTP:   httpClient,
+		Logger: logger,
+	})
 }
 
 func newHTTPClient(proxy string) (*http.Client, error) {

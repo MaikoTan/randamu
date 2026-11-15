@@ -113,7 +113,8 @@ func TestValidateSources(t *testing.T) {
 		{"bookmarks default restrict", []Source{{Type: "bookmarks"}}, false},
 		{"bookmarks invalid restrict", []Source{{Type: "bookmarks", Restrict: "secret"}}, true},
 		{"search without tag", []Source{{Type: "search"}}, true},
-		{"unknown", []Source{{Type: "lolicon"}}, true},
+		{"lolicon", []Source{{Type: "lolicon"}}, false},
+		{"unknown", []Source{{Type: "nope"}}, true},
 		{"recommended", []Source{{Type: "recommended"}}, false},
 	}
 	for _, tc := range cases {

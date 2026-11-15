@@ -10,19 +10,20 @@
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "1.6.1";
+        version = "1.7.0";
 
         randamu = pkgs.buildGoModule {
           pname = "randamu";
           inherit version;
           src = ./.;
-          # Standard library only; if third-party dependencies are added later,
-          # replace this with the real hash reported by the Nix build.
-          vendorHash = null;
+          vendorHash = "sha256-XRllmBaryRG8WrlkgDJUXhKZHFIYrZBNqwM08bRzBy8=";
           ldflags = [ "-s" "-w" "-X main.version=${version}" ];
           env.CGO_ENABLED = "0";
+          # nodynamic 强制 gen2brain/webp 使用纯 Go 的 WASM 后端，
+          # 而不是 dlopen 系统 libwebp，从而保持静态二进制。
+          tags = [ "nodynamic" ];
           meta = {
-            description = "Periodic pixiv image fetcher with idempotent downloads";
+            description = "Periodic image fetcher with idempotent downloads";
             homepage = "https://github.com/MaikoTan/randamu";
             license = pkgs.lib.licenses.mit;
             mainProgram = "randamu";
