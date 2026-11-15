@@ -450,10 +450,14 @@ func convertToWebP(path string, quality int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
-	img, _, err := image.Decode(f)
-	if err != nil {
-		return false, fmt.Errorf("decode for webp conversion: %w", err)
+	img, _, decodeErr := image.Decode(f)
+	// 必须在 rename 之前关掉句柄：Windows 不允许重命名仍被打开的文件。
+	fcloseErr := f.Close()
+	if decodeErr != nil {
+		return false, fmt.Errorf("decode for webp conversion: %w", decodeErr)
+	}
+	if fcloseErr != nil {
+		return false, fcloseErr
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".webp-*.part")
