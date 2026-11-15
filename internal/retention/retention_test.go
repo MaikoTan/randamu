@@ -180,3 +180,52 @@ func TestPruneMissingDir(t *testing.T) {
 		t.Fatalf("deleted = %v, want none", deleted)
 	}
 }
+
+func TestPrunePrefixedNames(t *testing.T) {
+	dir := t.TempDir()
+	// 新图源带前缀的文件名
+	makeFile(t, dir, "danbooru_123_p0.webp", 10, 72*time.Hour)
+	makeFile(t, dir, "konachan_456_p0.jpg", 10, 72*time.Hour)
+	makeFile(t, dir, "danbooru_123_p0.webp.part", 10, 48*time.Hour)
+	makeFile(t, dir, "lolicon_789_p2.png", 10, time.Hour)
+
+	deleted, err := Prune(dir, Options{MaxAgeDays: 1}, time.Now(), false, logger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(deleted)
+	want := []string{"danbooru_123_p0.webp", "danbooru_123_p0.webp.part", "konachan_456_p0.jpg"}
+	if len(deleted) != len(want) {
+		t.Fatalf("deleted = %v, want %v", deleted, want)
+	}
+	for i := range want {
+		if deleted[i] != want[i] {
+			t.Fatalf("deleted = %v, want %v", deleted, want)
+		}
+	}
+	if !exists(dir, "lolicon_789_p2.png") {
+		t.Error("recent prefixed page was removed")
+	}
+}
+
+func TestPruneLeavesUnrelatedNames(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		"p0.jpg",          // 没有作品 ID
+		"abc_p0.jpg",      // 前缀后必须紧跟数字
+		"123_p0.bmp",      // 不支持的扩展名
+		"2026_123.png",    // 数字前缀但有下划线
+		"123_v1.webp",     // 合并文件只能是 png
+		"random-name.png", // 完全无关
+	} {
+		makeFile(t, dir, name, 10, 72*time.Hour)
+	}
+
+	deleted, err := Prune(dir, Options{MaxSizeMB: 1, MaxAgeDays: 1}, time.Now(), false, logger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("deleted = %v, want none", deleted)
+	}
+}

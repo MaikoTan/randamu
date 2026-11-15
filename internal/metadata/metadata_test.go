@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/color"
@@ -209,4 +210,81 @@ func TestPNGChunkPlacement(t *testing.T) {
 	}
 	// 原文件应作为去掉新块的子序列存在（IDAT 等未被改动）。
 	_ = before
+}
+
+// TestWriteIdempotent 确认重复写入不会累积块、不增大文件，且 Detect 读到最新值。
+func TestWriteIdempotent(t *testing.T) {
+	img := solidImage(8, 8, color.NRGBA{9, 8, 7, 255})
+	encoders := map[string]func(*bytes.Buffer) error{
+		"a.png":  func(b *bytes.Buffer) error { return png.Encode(b, img) },
+		"a.jpg":  func(b *bytes.Buffer) error { return jpeg.Encode(b, img, &jpeg.Options{Quality: 90}) },
+		"a.webp": func(b *bytes.Buffer) error { return webp.Encode(b, img, webp.DefaultQuality) },
+	}
+	for name, encode := range encoders {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeFixture(t, dir, name, img, encode)
+			first := testInfo()
+			if err := Write(path, first); err != nil {
+				t.Fatalf("first Write: %v", err)
+			}
+			before, _ := os.ReadFile(path)
+
+			second := testInfo()
+			second.ID = 999
+			second.Tags = nil
+			if err := Write(path, second); err != nil {
+				t.Fatalf("second Write: %v", err)
+			}
+			after, _ := os.ReadFile(path)
+
+			if n := bytes.Count(after, []byte(Marker)); n != 1 {
+				t.Errorf("marker count = %d, want 1", n)
+			}
+			if len(after) > len(before) {
+				t.Errorf("file grew on rewrite: %d -> %d bytes", len(before), len(after))
+			}
+			got, err := Detect(path)
+			if err != nil {
+				t.Fatalf("Detect: %v", err)
+			}
+			if got.ID != 999 {
+				t.Errorf("Detect ID = %d, want 999", got.ID)
+			}
+			assertDecodes(t, name, after)
+		})
+	}
+}
+
+// TestMatchingBraceEscapes 确认字符串内的转义引号与花括号不干扰配对。
+func TestMatchingBraceEscapes(t *testing.T) {
+	in := []byte(`{"t":"a\"b}","x":{"y":"\\"},"z":1}`)
+	end := matchingBrace(in)
+	if end != len(in) {
+		t.Fatalf("matchingBrace end = %d, want %d", end, len(in))
+	}
+	var info map[string]any
+	if err := json.Unmarshal(in[:end], &info); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+}
+
+// TestWritePreservesMode 确认 Write 保留原文件权限。
+func TestWritePreservesMode(t *testing.T) {
+	dir := t.TempDir()
+	img := solidImage(4, 4, color.NRGBA{1, 1, 1, 255})
+	path := writeFixture(t, dir, "m.png", img, func(b *bytes.Buffer) error { return png.Encode(b, img) })
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(path, testInfo()); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o640 {
+		t.Fatalf("mode = %v, want 0640", fi.Mode().Perm())
+	}
 }

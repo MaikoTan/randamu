@@ -81,9 +81,14 @@ func (s *PixivSource) viewed() []int64 {
 func mapIllusts(illusts []pixiv.Illust) []Work {
 	works := make([]Work, 0, len(illusts))
 	for _, i := range illusts {
-		tags := make([]string, 0, len(i.Tags))
+		tags := make([]string, 0, len(i.Tags)*2)
 		for _, t := range i.Tags {
 			tags = append(tags, t.Name)
+			// 保留翻译名：旧 filter.Skip 同时匹配 Name 与 TranslatedName，
+			// 只取 Name 会让仅靠翻译名命中的黑名单失效。
+			if t.TranslatedName != "" && t.TranslatedName != t.Name {
+				tags = append(tags, t.TranslatedName)
+			}
 		}
 		urls := originalURLs(i)
 		pages := make([]ImageURL, 0, len(urls))

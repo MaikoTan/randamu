@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	_ "image/jpeg" // register JPEG decoder,让本包独立完成转码
+	_ "image/png"  // register PNG decoder,让本包独立完成转码
 	"io"
 	"log/slog"
 	"net/http"
@@ -204,11 +206,10 @@ func (d *Downloader) Download(ctx context.Context, job Job) (Status, error) {
 	}
 	// 幂等跳过：原图名与转码后的 WebP 名任一存在即跳过，
 	// 避免同一张图以 jpg 与 webp 两种后缀重复占空间。
-	if d.convertWebP {
-		webpName := strings.TrimSuffix(name, filepath.Ext(name)) + ".webp"
-		if _, err := os.Stat(filepath.Join(d.dir, webpName)); err == nil {
-			return Skipped, nil
-		}
+	// WebP 检查与转码开关无关：即使后续关闭转码，也不应再下载一份原图。
+	webpName := strings.TrimSuffix(name, filepath.Ext(name)) + ".webp"
+	if _, err := os.Stat(filepath.Join(d.dir, webpName)); err == nil {
+		return Skipped, nil
 	}
 	final := filepath.Join(d.dir, name)
 	if _, err := os.Stat(final); err == nil {
@@ -460,6 +461,12 @@ func convertToWebP(path string, quality int) (bool, error) {
 		return false, err
 	}
 	tmpName := tmp.Name()
+	// CreateTemp 默认 0600，转码后需与下载文件一致（0644）。
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return false, err
+	}
 	if err := webp.Encode(tmp, img, quality); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)

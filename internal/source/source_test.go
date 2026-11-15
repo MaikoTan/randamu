@@ -221,6 +221,134 @@ func TestPixivMapping(t *testing.T) {
 	}
 }
 
+// mapIllusts 必须保留翻译名，否则仅靠 translated_name 命中的黑名单会失效。
+func TestPixivMappingKeepsTranslatedTags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"illusts": []map[string]any{{
+				"id": 200, "title": "T", "page_count": 1,
+				"user": map[string]any{"id": 1, "name": "a"},
+				"tags": []map[string]any{
+					{"name": "風景", "translated_name": "landscape"},
+					{"name": "same", "translated_name": "same"},
+					{"name": "noTrans"},
+				},
+				"meta_single_page": map[string]any{"original_image_url": "https://i/200_p0.jpg"},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	client, err := pixiv.New(pixiv.Options{
+		HTTPClient:        srv.Client(),
+		APIBase:           srv.URL,
+		MaxRetries:        1,
+		RequestsPerSecond: 1000,
+	})
+	if err != nil {
+		t.Fatalf("pixiv.New: %v", err)
+	}
+	src := NewPixiv(client, "bookmarks", config.Source{Restrict: "public"}, 1)
+	page, err := src.Fetch(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	got := page.Works[0].Tags
+	want := []string{"風景", "landscape", "same", "noTrans"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("tags = %v, want %v", got, want)
+	}
+}
+
+func TestLoliconR18Mapping(t *testing.T) {
+	cases := map[string]int{
+		"":             0,
+		"safe":         0,
+		"questionable": 0,
+		"explicit":     1,
+		"r18":          1,
+		"bogus":        0,
+	}
+	for rating, want := range cases {
+		if got := loliconR18(rating); got != want {
+			t.Errorf("loliconR18(%q) = %d, want %d", rating, got, want)
+		}
+	}
+}
+
+// explicit 评级应请求 r18=1。
+func TestLoliconExplicitRequestsR18(t *testing.T) {
+	var gotBody loliconRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": []any{}})
+	}))
+	defer srv.Close()
+
+	cfg := config.Source{Type: "lolicon", Rating: "explicit", Limit: 3, APIBase: srv.URL}
+	if _, err := NewLolicon(cfg, Options{HTTP: srv.Client()}).Fetch(context.Background(), ""); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if gotBody.R18 != 1 || gotBody.Num != 3 {
+		t.Errorf("request body = %+v", gotBody)
+	}
+}
+
+// 短页表示没有更多内容，NextCursor 应为空；空页也不得重置回第 1 页。
+func TestKonachanShortAndEmptyPage(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			// 短页：只返回 1 条，less than limit
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 1, "tags": "t", "rating": "s", "file_url": "https://k/1.jpg"},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]any{})
+	}))
+	defer srv.Close()
+
+	src := NewKonachan(config.Source{Type: "konachan", Limit: 5, APIBase: srv.URL}, Options{HTTP: srv.Client()})
+	page, err := src.Fetch(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if page.NextCursor != "" {
+		t.Errorf("short page NextCursor = %q, want empty", page.NextCursor)
+	}
+	// 空页同样不应给出 cursor
+	page, err = src.Fetch(context.Background(), "2")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(page.Works) != 0 || page.NextCursor != "" {
+		t.Errorf("empty page = %+v", page)
+	}
+}
+
+// 随机模式只取一批，NextCursor 必须为空。
+func TestKonachanRandomNoCursor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 返回满页，验证随机模式仍不给出 cursor
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": 1, "tags": "t", "rating": "s", "file_url": "https://k/1.jpg"},
+			{"id": 2, "tags": "t", "rating": "s", "file_url": "https://k/2.jpg"},
+		})
+	}))
+	defer srv.Close()
+
+	src := NewKonachan(config.Source{Type: "konachan", Limit: 2, Random: true, APIBase: srv.URL}, Options{HTTP: srv.Client()})
+	page, err := src.Fetch(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if page.NextCursor != "" {
+		t.Errorf("random NextCursor = %q, want empty", page.NextCursor)
+	}
+}
+
 func TestNewUnknownType(t *testing.T) {
 	if _, err := New(config.Source{Type: "nope"}, Options{}); err == nil {
 		t.Fatal("unknown type must fail")

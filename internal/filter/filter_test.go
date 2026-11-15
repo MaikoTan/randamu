@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/MaikoTan/randamu/internal/pixiv"
+	"github.com/MaikoTan/randamu/internal/source"
 )
 
 func TestSkip(t *testing.T) {
@@ -73,5 +74,41 @@ func TestOriginalURLs(t *testing.T) {
 
 	if got := OriginalURLs(pixiv.Illust{PageCount: 1}); len(got) != 0 {
 		t.Fatalf("no URL: %v", got)
+	}
+}
+
+func TestSkipWork(t *testing.T) {
+	base := source.Work{ID: 1, Kind: "illust", PageCount: 1}
+	cases := []struct {
+		name string
+		mut  func(*source.Work)
+		opts Options
+		want bool
+	}{
+		{"regular work", func(*source.Work) {}, Options{}, false},
+		{"ugoira", func(w *source.Work) { w.Kind = "ugoira" }, Options{}, true},
+		{"AI", func(w *source.Work) { w.AI = true }, Options{SkipAI: true}, true},
+		{"AI but filter disabled", func(w *source.Work) { w.AI = true }, Options{}, false},
+		{"R18", func(w *source.Work) { w.XRestrict = 1 }, Options{SkipR18: true}, true},
+		{"R18 but filter disabled", func(w *source.Work) { w.XRestrict = 1 }, Options{}, false},
+		{"R18G", func(w *source.Work) { w.XRestrict = 2 }, Options{SkipR18G: true}, true},
+		{"blacklist substring", func(w *source.Work) {
+			w.Tags = []string{"3D"}
+		}, Options{Blacklist: []string{"3d"}}, true},
+		{"blacklist empty entry is ignored", func(w *source.Work) {
+			w.Tags = []string{"風景"}
+		}, Options{Blacklist: []string{""}}, false},
+		{"too many pages", func(w *source.Work) { w.PageCount = 11 }, Options{MaxPageCount: 10}, true},
+		{"exactly at page limit", func(w *source.Work) { w.PageCount = 10 }, Options{MaxPageCount: 10}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := base
+			tc.mut(&w)
+			got, reason := SkipWork(w, tc.opts)
+			if got != tc.want {
+				t.Fatalf("SkipWork = %v (%s), want %v", got, reason, tc.want)
+			}
+		})
 	}
 }

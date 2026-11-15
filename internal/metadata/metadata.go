@@ -19,6 +19,9 @@ import (
 // Marker 是内嵌元信息的固定前缀，用于在文件中快速定位。
 const Marker = "randamu:v1:"
 
+// pngSignature 是 PNG 文件开头的 8 字节魔数。
+var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+
 // ErrNotFound 表示文件中没有本包写入的元信息。
 var ErrNotFound = errors.New("metadata: marker not found")
 
@@ -58,14 +61,25 @@ func Write(path string, info Info) error {
 	}
 	payload := []byte(info.Payload())
 
+	// 先移除之前写入的同类块，避免重复 Write 不断累积（文件膨胀、
+	// Detect 读到旧值）。移除后再插入，保证文件内只有一份元信息。
 	var out []byte
 	switch detectFormat(data) {
 	case formatPNG:
-		out, err = insertPNG(data, payload)
+		var stripped []byte
+		if stripped, err = stripPNG(data); err == nil {
+			out, err = insertPNG(stripped, payload)
+		}
 	case formatJPEG:
-		out, err = insertJPEG(data, payload)
+		var stripped []byte
+		if stripped, err = stripJPEG(data); err == nil {
+			out, err = insertJPEG(stripped, payload)
+		}
 	case formatWebP:
-		out, err = insertWebP(data, payload)
+		var stripped []byte
+		if stripped, err = stripWebP(data); err == nil {
+			out, err = insertWebP(stripped, payload)
+		}
 	default:
 		return ErrUnsupported
 	}
@@ -109,6 +123,109 @@ func detectFormat(b []byte) format {
 		return formatWebP
 	}
 	return formatUnknown
+}
+
+// stripPNG 去掉本包此前写入的 tEXt 块（keyword 为 "Randamu"），
+// 其余块原样保留。解析失败时原样返回，交由后续插入步骤报错。
+func stripPNG(data []byte) ([]byte, error) {
+	const sigLen = 8
+	if len(data) < sigLen || !bytes.Equal(data[:sigLen], pngSignature) {
+		return data, nil
+	}
+	out := make([]byte, 0, len(data))
+	out = append(out, data[:sigLen]...)
+	pos := sigLen
+	for pos+12 <= len(data) {
+		n := int(binary.BigEndian.Uint32(data[pos : pos+4]))
+		end := pos + 12 + n
+		if end > len(data) {
+			// 结构异常，放弃剥离，保持原文件字节。
+			return data, nil
+		}
+		chunk := data[pos:end]
+		if string(chunk[4:8]) == "tEXt" && bytes.HasPrefix(chunk[8:], []byte("Randamu\x00")) {
+			pos = end
+			continue
+		}
+		out = append(out, chunk...)
+		pos = end
+		if string(chunk[4:8]) == "IEND" {
+			break
+		}
+	}
+	if pos < len(data) {
+		out = append(out, data[pos:]...)
+	}
+	return out, nil
+}
+
+// stripJPEG 去掉此前插入的 COM 段（含 Marker 的），其余字节原样保留。
+// 只扫描熵编码开始（SOS，0xDA）之前的段链，避免误解析像素数据。
+func stripJPEG(data []byte) ([]byte, error) {
+	if len(data) < 2 || data[0] != 0xFF || data[1] != 0xD8 {
+		return data, nil
+	}
+	out := make([]byte, 0, len(data))
+	out = append(out, data[:2]...)
+	pos := 2
+	for pos+1 < len(data) && data[pos] == 0xFF {
+		marker := data[pos+1]
+		// 无长度的独立标记：TEM 与 RSTn。
+		if marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7) {
+			out = append(out, data[pos:pos+2]...)
+			pos += 2
+			continue
+		}
+		// SOS 之后是熵编码数据，不再解析，剩余字节原样拷贝。
+		if marker == 0xDA || marker == 0xD9 {
+			break
+		}
+		if pos+4 > len(data) {
+			return data, nil
+		}
+		segLen := int(binary.BigEndian.Uint16(data[pos+2 : pos+4]))
+		end := pos + 2 + segLen
+		if segLen < 2 || end > len(data) {
+			return data, nil
+		}
+		seg := data[pos:end]
+		if marker == 0xFE && bytes.Contains(seg[4:], []byte(Marker)) {
+			pos = end
+			continue
+		}
+		out = append(out, seg...)
+		pos = end
+	}
+	out = append(out, data[pos:]...)
+	return out, nil
+}
+
+// stripWebP 去掉此前追加的 XMP 块（含 Marker 的），重算 RIFF 长度。
+func stripWebP(data []byte) ([]byte, error) {
+	if len(data) < 12 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WEBP" {
+		return data, nil
+	}
+	out := make([]byte, 0, len(data))
+	out = append(out, data[:12]...)
+	pos := 12
+	for pos+8 <= len(data) {
+		n := int(binary.LittleEndian.Uint32(data[pos+4 : pos+8]))
+		size := 8 + n + (n & 1) // 奇数长度带 1 字节填充
+		end := pos + size
+		if end > len(data) {
+			return data, nil
+		}
+		chunk := data[pos:end]
+		if string(chunk[0:4]) == "XMP " && bytes.Contains(chunk[8:], []byte(Marker)) {
+			pos = end
+			continue
+		}
+		out = append(out, chunk...)
+		pos = end
+	}
+	out = append(out, data[pos:]...)
+	binary.LittleEndian.PutUint32(out[4:8], uint32(len(out)-8))
+	return out, nil
 }
 
 // insertPNG 在 IHDR 之后插入一个 tEXt 块。

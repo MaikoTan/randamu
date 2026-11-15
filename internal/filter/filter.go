@@ -18,6 +18,8 @@ type Options struct {
 }
 
 // SkipWork 判断一个图源无关的作品是否应跳过，返回原因。
+// ugoira 与 pixiv 相同：kind/type 为 ugoira 时跳过。标签由各图源适配器填充，
+// pixiv 源同时包含标签名与译名（黑名单按子串匹配两者）。
 func SkipWork(w source.Work, o Options) (bool, string) {
 	if w.Kind == "ugoira" {
 		return true, "ugoira"

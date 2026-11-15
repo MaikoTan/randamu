@@ -218,12 +218,14 @@ func run() int {
 		Blacklist:    cfg.BlacklistTags,
 	}
 
+	merge := cfg.MergeVariations && !cfg.WebP
+
 	failures := 0
 	for _, src := range sources {
 		if ctx.Err() != nil {
 			break
 		}
-		n, err := runSource(ctx, client, httpClient, userID, st, cfg, src, downloader, filterOpts, logger, *dryRun)
+		n, err := runSource(ctx, client, httpClient, userID, st, cfg, src, downloader, filterOpts, merge, logger, *dryRun)
 		failures += n
 		if err != nil {
 			logger.Error("source failed", "source", sourceKey(src), "error", err)
@@ -275,6 +277,7 @@ func runSource(
 	src config.Source,
 	d *download.Downloader,
 	filterOpts filter.Options,
+	merge bool,
 	logger *slog.Logger,
 	dryRun bool,
 ) (int, error) {
@@ -316,8 +319,7 @@ func runSource(
 				logger.Debug("skipping previously rejected work", "id", work.ID, "source", key)
 				continue
 			}
-			// WebP 转码开启时不做差分合并：合并需要逐页的原图参与 APNG。
-			if cfg.MergeVariations && !cfg.WebP {
+			if merge {
 				if mergedExists(cfg.ImagesDir, work.ID) {
 					logger.Debug("skipping merged work", "id", work.ID, "source", key)
 					continue
@@ -350,7 +352,7 @@ func runSource(
 		}
 
 		pageFailures := runJobs(ctx, d, jobs, cfg.Concurrency, logger, dryRun, st)
-		if cfg.MergeVariations && !cfg.WebP && !dryRun {
+		if merge && !dryRun {
 			mergeVariations(cfg, pageNames, logger)
 		}
 		failures += pageFailures
@@ -518,8 +520,9 @@ func sourceKey(s config.Source) string {
 	case "search":
 		return strings.Join([]string{"search", s.Tag, s.SearchTarget, s.Sort, s.Duration}, ":")
 	case "lolicon", "konachan", "danbooru":
-		// 用图源名 + 标签 + 评分区分不同查询的游标。
-		return strings.Join([]string{s.Type, strings.Join(s.Tags, "+"), s.Rating}, ":")
+		// 用图源名 + 标签 + 评分 + 随机 + API 地址区分不同查询的游标：
+		// 随机翻页不写游标，而镜像的页码互不通用，都不能共用同一个键。
+		return strings.Join([]string{s.Type, strings.Join(s.Tags, "+"), s.Rating, s.APIBase, fmt.Sprintf("random=%t", s.Random)}, ":")
 	default:
 		return "recommended"
 	}
@@ -530,10 +533,12 @@ func sourceKey(s config.Source) string {
 func imageHostsFor(sources []config.Source) []string {
 	set := make(map[string]struct{})
 	add := func(h string) { set[h] = struct{}{} }
+	relaxed := false
 	for _, s := range sources {
 		if s.APIBase != "" {
-			// 自定义镜像的图片主机未知，放开限制（仍要求 https）。
-			return nil
+			// 自定义镜像的图片主机未知；不能只因它放弃其它图源的白名单，
+			// 先标记为放宽，最后再回退为不限制主机（仍要求 https）。
+			relaxed = true
 		}
 		switch s.Type {
 		case "bookmarks", "search", "recommended":
@@ -548,6 +553,9 @@ func imageHostsFor(sources []config.Source) []string {
 			add("danbooru.donmai.us")
 			add("cdn.donmai.us")
 		}
+	}
+	if relaxed {
+		return nil
 	}
 	out := make([]string, 0, len(set))
 	for h := range set {

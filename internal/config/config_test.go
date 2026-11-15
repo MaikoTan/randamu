@@ -114,6 +114,9 @@ func TestValidateSources(t *testing.T) {
 		{"bookmarks invalid restrict", []Source{{Type: "bookmarks", Restrict: "secret"}}, true},
 		{"search without tag", []Source{{Type: "search"}}, true},
 		{"lolicon", []Source{{Type: "lolicon"}}, false},
+		{"danbooru without tags", []Source{{Type: "danbooru"}}, false},
+		{"konachan rating", []Source{{Type: "konachan", Rating: "questionable"}}, false},
+		{"konachan bad rating", []Source{{Type: "konachan", Rating: "nsfw"}}, true},
 		{"unknown", []Source{{Type: "nope"}}, true},
 		{"recommended", []Source{{Type: "recommended"}}, false},
 	}
@@ -129,6 +132,51 @@ func TestValidateSources(t *testing.T) {
 				t.Fatalf("limit default not applied: %d", cfg.Sources[0].Limit)
 			}
 		})
+	}
+}
+
+func TestWebPQualityClamp(t *testing.T) {
+	for _, q := range []int{-5, 0, 101, 1000} {
+		cfg := Default()
+		cfg.WebPQuality = q
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("quality %d: Validate: %v", q, err)
+		}
+		if cfg.WebPQuality != 85 {
+			t.Fatalf("quality %d: clamp = %d, want 85", q, cfg.WebPQuality)
+		}
+	}
+	cfg := Default()
+	cfg.WebPQuality = 70
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WebPQuality != 70 {
+		t.Fatalf("valid quality changed to %d", cfg.WebPQuality)
+	}
+}
+
+func TestApplyEnvWebP(t *testing.T) {
+	cases := map[string]bool{
+		"off": false, "0": false, "false": false, "no": false, "OFF": false,
+		"on": true, "1": true, "true": true, "yes": true, "on ": true,
+	}
+	for v, want := range cases {
+		t.Setenv("RANDAMU_WEBP", v)
+		cfg := Default()
+		cfg.WebP = !want // 先置反，确认环境变量确实生效
+		cfg.ApplyEnv()
+		if cfg.WebP != want {
+			t.Fatalf("RANDAMU_WEBP=%q: webp = %v, want %v", v, cfg.WebP, want)
+		}
+	}
+	// 未识别的值不改变配置
+	t.Setenv("RANDAMU_WEBP", "maybe")
+	cfg := Default()
+	cfg.WebP = true
+	cfg.ApplyEnv()
+	if !cfg.WebP {
+		t.Fatal("unrecognised RANDAMU_WEBP changed the setting")
 	}
 }
 

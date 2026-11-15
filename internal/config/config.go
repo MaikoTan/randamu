@@ -161,7 +161,7 @@ func (c *Config) ApplyEnv() {
 	if v := os.Getenv("RANDAMU_PROXY"); v != "" {
 		c.Proxy = v
 	}
-	if v := os.Getenv("RANDAMU_WEBP"); v != "" {
+	if v := strings.TrimSpace(os.Getenv("RANDAMU_WEBP")); v != "" {
 		switch strings.ToLower(v) {
 		case "0", "false", "no", "off":
 			c.WebP = false

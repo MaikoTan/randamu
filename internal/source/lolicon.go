@@ -62,11 +62,12 @@ type loliconIllust struct {
 	} `json:"urls"`
 }
 
-// loliconR18 把配置的 rating 映射为 lolicon 的 r18 参数：0 非R18、1 仅R18、2 混合。
-// 未指定或未知值一律按非R18 处理，保守起见。
+// loliconR18 把配置的 rating 映射为 lolicon 的 r18 参数：0 非R18、1 仅R18。
+// explicit 对应 R18；safe/questionable 均按非R18 处理（lolicon 没有单独的
+// questionable 档位，稳妥起见归入非R18）。未指定或未知值也按非R18。
 func loliconR18(rating string) int {
 	switch rating {
-	case "r18":
+	case "explicit", "r18":
 		return 1
 	default:
 		return 0
