@@ -46,6 +46,9 @@ jobs:
           curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/checksums.txt \
             | awk '/^.*  nfpm_2\.48\.0_Linux_x86_64\.tar\.gz$/ {print $1 "  /tmp/nfpm.tar.gz"}' | sha256sum -c -
           tar -C /usr/local/bin -xzf /tmp/nfpm.tar.gz nfpm
+      - name: Install UPX (macOS)
+        if: runner.os == 'macOS'
+        run: brew install upx
       - name: Build
         # CGO is disabled so every binary is pure Go. WebP 编解码走 purego
         # dlopen 内嵌的 libwebp（internal/webp/lib/*.gz 经 //go:embed 内嵌），
