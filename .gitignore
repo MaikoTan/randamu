@@ -5,7 +5,7 @@
 *.part
 
 # Go
-/vendor/
+# vendor/ 已提交进仓库，供 flake 的 vendorHash = null 构建使用。
 
 # Local configuration and secrets
 config.local.json

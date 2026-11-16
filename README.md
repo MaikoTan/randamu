@@ -19,7 +19,7 @@ This replaces the old Python/FastAPI random-wallpaper service.
   WebP XMP) so files are recognisable as randamu output
 - Reliable downloads: bounded concurrency, retries with backoff, `Range` resume for partial files
 - Optional proxy support (`http`, `https`, `socks5`)
-- Pure-Go, one static binary, low memory
+- Pure-Go, one self-contained binary, low memory
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
 - Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
@@ -68,12 +68,13 @@ systemd credential.
 
 ```bash
 nix build            # ./result/bin/randamu
-# or (CGO off + nodynamic keeps the binary static)
-CGO_ENABLED=0 go build -tags nodynamic -trimpath -o randamu .
+# or
+CGO_ENABLED=0 go build -trimpath -o randamu .
 ```
 
-The `nodynamic` build tag makes the pure-Go WebP backend (WASM) be used
-instead of dlopen-ing a system libwebp, so the binary stays static.
+WebP 编解码走 dlopen 内嵌的 libwebp（`internal/webp/lib/*.gz`，由 flake
+中的 `webpLib` 交叉编译生成并 `//go:embed` 进二进制），因此二进制仍是静态的，
+不需要系统 libwebp。
 
 ## Usage
 
