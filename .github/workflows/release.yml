@@ -52,18 +52,27 @@ jobs:
       - name: Install UPX and cmake (macOS)
         if: runner.os == 'macOS'
         run: brew install upx cmake
-      # Linux / Windows 目标用 zig 交叉编译出 musl / mingw 的静态 libwebp；
-      # macOS 目标用 Xcode 自带的 clang（libSystem 本身动态提供，无需 -static）。
+      # libwebp 一律用 zig 交叉编译成静态库（连 macOS 也是：Xcode 26 的
+      # math.h 在 x86_64 目标下用到 clang 不支持的 _Float16）。zig 自带
+      # libc 头文件，不需要 SDK；macOS 的 Go 链接仍交给原生 clang。
       - name: Install zig
-        if: runner.os == 'Linux'
         env:
           ZIG_VERSION: "0.17.0"
-          ZIG_SHA256: "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026"
         run: |
           set -euo pipefail
-          url="https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)
+              url="https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+              sha256="1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026" ;;
+            Darwin-arm64)
+              url="https://ziglang.org/download/${ZIG_VERSION}/zig-aarch64-macos-${ZIG_VERSION}.tar.xz"
+              sha256="b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a" ;;
+            *)
+              echo "unsupported runner: $(uname -s)-$(uname -m)" >&2
+              exit 1 ;;
+          esac
           curl -fsSL -o /tmp/zig.tar.xz "$url"
-          echo "${ZIG_SHA256}  /tmp/zig.tar.xz" | shasum -a 256 -c -
+          echo "${sha256}  /tmp/zig.tar.xz" | shasum -a 256 -c -
           mkdir -p /tmp/zig
           tar -xJf /tmp/zig.tar.xz -C /tmp/zig --strip-components=1
           echo "/tmp/zig" >> "$GITHUB_PATH"
@@ -125,15 +134,11 @@ jobs:
 
           # 为目标平台编译静态 libwebp，并生成注入 zig/clang 参数的 CC 包装。
           build_libwebp() {
-            local name="$1" zig_target="$2" mac_arch="$3"
+            local name="$1" zig_target="$2"
             local b="/tmp/libwebp-$name"
             rm -rf "$b"
             mkdir -p "$b"
-            if [ -n "$zig_target" ]; then
-              printf '#!/bin/sh\nexec zig cc -target %s "$@"\n' "$zig_target" > "$b/cc.sh"
-            else
-              printf '#!/bin/sh\nexec clang -arch %s "$@"\n' "$mac_arch" > "$b/cc.sh"
-            fi
+            printf '#!/bin/sh\nexec zig cc -target %s "$@"\n' "$zig_target" > "$b/cc.sh"
             chmod +x "$b/cc.sh"
             cmake -S /tmp/libwebp -B "$b/build" \
               -DCMAKE_BUILD_TYPE=Release \
@@ -167,22 +172,38 @@ jobs:
               windows_x86)     zig_target=x86-windows-gnu ;;
               windows_x64)     zig_target=x86_64-windows-gnu ;;
               windows_aarch64) zig_target=aarch64-windows-gnu ;;
-              macos_x64)       mac_arch=x86_64; extra_ld="" ;;
-              macos_aarch64)   mac_arch=arm64;  extra_ld="" ;;
+              macos_x64)       zig_target=x86_64-macos.11.0; mac_arch=x86_64; extra_ld="" ;;
+              macos_aarch64)   zig_target=aarch64-macos.11.0; mac_arch=arm64;  extra_ld="" ;;
             esac
 
-            build_libwebp "$name" "$zig_target" "$mac_arch"
+            build_libwebp "$name" "$zig_target"
+
+            # Go 的 cgo 编译器：macOS 用 Xcode 的 clang（需要 SDK 里的
+            # libSystem 与框架，zig 在非 macOS 主机上找不到），其余用 zig。
+            local go_cc="/tmp/go-cc-$name.sh"
+            if [ -n "$mac_arch" ]; then
+              printf '#!/bin/sh\nexec clang -arch %s "$@"\n' "$mac_arch" > "$go_cc"
+            else
+              cp "/tmp/libwebp-$name/cc.sh" "$go_cc"
+            fi
+            chmod +x "$go_cc"
 
             local dir="dist/$name"
             mkdir -p "$dir"
+            # windows/arm64 上 lld-link 不认 zig ar 写的 ARM64 归档索引，
+            # 只能强制拉入整个归档（体积略增，仅此目标）。
+            local webp_ld="-L/tmp/libwebp-$name/build -lwebp -lsharpyuv -lm"
+            if [ "$name" = "windows_aarch64" ]; then
+              webp_ld="-L/tmp/libwebp-$name/build -Wl,--whole-archive -lwebp -lsharpyuv -Wl,--no-whole-archive -lm"
+            fi
             local ldf="-s -w -X main.version=${version} -linkmode external"
             if [ -n "$extra_ld" ]; then
               ldf="$ldf -extldflags $extra_ld"
             fi
             env CGO_ENABLED=1 \
-              CC="/tmp/libwebp-$name/cc.sh" \
+              CC="$go_cc" \
               CGO_CFLAGS="-I/tmp/libwebp/src" \
-              CGO_LDFLAGS="-L/tmp/libwebp-$name/build -lwebp -lsharpyuv -lm" \
+              CGO_LDFLAGS="$webp_ld" \
               GOARCH="$goarch" GOARM="${goarm:-}" \
               go build -trimpath -tags "netgo,osusergo" \
               -ldflags "$ldf" \

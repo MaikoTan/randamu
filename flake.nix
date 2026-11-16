@@ -11,7 +11,7 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         lib = pkgs.lib;
-        version = "1.7.4";
+        version = "1.7.5";
 
         # libwebp 版本，与 internal/webp 的 cgo 绑定要保持 ABI 兼容。
         libwebpVersion = "1.6.0";
