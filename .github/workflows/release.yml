@@ -134,17 +134,27 @@ jobs:
 
           # 为目标平台编译静态 libwebp，并生成注入 zig/clang 参数的 CC 包装。
           build_libwebp() {
-            local name="$1" zig_target="$2"
+            local name="$1" zig_target="$2" mac_arch="$3"
             local b="/tmp/libwebp-$name"
             rm -rf "$b"
             mkdir -p "$b"
             printf '#!/bin/sh\nexec zig cc -target %s "$@"\n' "$zig_target" > "$b/cc.sh"
             chmod +x "$b/cc.sh"
+            # macOS 主机上 CMake 会按 host 架构自动追加 -arch，与 zig 的
+            # -target 冲突（x86_64 目标会被改写成 arm64），必须显式指定。
+            # -U__FLT16_MANT_DIG__ 兜底 Xcode 26 的 math.h：它在 x86_64
+            # 下引用了 clang 不支持的 _Float16。
+            local cmake_osx="" extra_cflags=""
+            if [ -n "$mac_arch" ]; then
+              cmake_osx="-DCMAKE_OSX_ARCHITECTURES=$mac_arch"
+              extra_cflags="-U__FLT16_MANT_DIG__"
+            fi
             cmake -S /tmp/libwebp -B "$b/build" \
               -DCMAKE_BUILD_TYPE=Release \
               -DBUILD_SHARED_LIBS=OFF \
               -DCMAKE_C_COMPILER="$b/cc.sh" \
-              -DCMAKE_C_FLAGS="-ffunction-sections -fdata-sections" \
+              -DCMAKE_C_FLAGS="-ffunction-sections -fdata-sections $extra_cflags" \
+              $cmake_osx \
               -DWEBP_BUILD_ANIM_UTILS=OFF \
               -DWEBP_BUILD_CWEBP=OFF \
               -DWEBP_BUILD_DWEBP=OFF \
@@ -176,13 +186,13 @@ jobs:
               macos_aarch64)   zig_target=aarch64-macos.11.0; mac_arch=arm64;  extra_ld="" ;;
             esac
 
-            build_libwebp "$name" "$zig_target"
+            build_libwebp "$name" "$zig_target" "$mac_arch"
 
             # Go 的 cgo 编译器：macOS 用 Xcode 的 clang（需要 SDK 里的
             # libSystem 与框架，zig 在非 macOS 主机上找不到），其余用 zig。
             local go_cc="/tmp/go-cc-$name.sh"
             if [ -n "$mac_arch" ]; then
-              printf '#!/bin/sh\nexec clang -arch %s "$@"\n' "$mac_arch" > "$go_cc"
+              printf '#!/bin/sh\nexec clang -arch %s -U__FLT16_MANT_DIG__ "$@"\n' "$mac_arch" > "$go_cc"
             else
               cp "/tmp/libwebp-$name/cc.sh" "$go_cc"
             fi
