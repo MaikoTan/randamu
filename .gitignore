@@ -4,8 +4,8 @@
 /randamu
 *.part
 
-# Go
-# vendor/ 已提交进仓库，供 flake 的 vendorHash = null 构建使用。
+# 本地复现 release 脚本时编译出的静态 libwebp
+/.libwebp-cache/
 
 # Local configuration and secrets
 config.local.json

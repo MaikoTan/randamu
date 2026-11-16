@@ -33,6 +33,14 @@ jobs:
           # pkgbuild only exists on macOS; the darwin job runs there.
           - { goos: darwin, runner: macos-latest }
     runs-on: ${{ matrix.runner }}
+    env:
+      LIBWEBP_VERSION: "1.6.0"
+      ZIG_VERSION: "0.17.0"
+      # 改 cache 的目录布局或编译参数时递增，强制失效旧缓存。
+      LIBWEBP_CACHE_REV: "1"
+      # 放在 workspace 下而不是 /tmp：macOS 的 /tmp 是 /private/tmp 的软链，
+      # 缓存工具对软链路径的处理不如普通目录可靠。
+      LIBWEBP_CACHE_DIR: ${{ github.workspace }}/.libwebp-cache
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -56,8 +64,6 @@ jobs:
       # math.h 在 x86_64 目标下用到 clang 不支持的 _Float16）。zig 自带
       # libc 头文件，不需要 SDK；macOS 的 Go 链接仍交给原生 clang。
       - name: Install zig
-        env:
-          ZIG_VERSION: "0.17.0"
         run: |
           set -euo pipefail
           case "$(uname -s)-$(uname -m)" in
@@ -80,11 +86,18 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/libwebp.tar.gz \
-            "https://github.com/webmproject/libwebp/archive/v1.6.0.tar.gz"
+            "https://github.com/webmproject/libwebp/archive/v${LIBWEBP_VERSION}.tar.gz"
           echo "93a852c2b3efafee3723efd4636de855b46f9fe1efddd607e1f42f60fc8f2136  /tmp/libwebp.tar.gz" \
             | shasum -a 256 -c -
           mkdir -p /tmp/libwebp
           tar -xzf /tmp/libwebp.tar.gz -C /tmp/libwebp --strip-components=1
+      # 编译好的静态库按 GOOS 整体缓存（一个 job 内的各 arch 一起）。
+      # 命中时 build_libwebp 直接跳过 cmake，省掉每个目标 2–4 分钟。
+      - name: Cache libwebp static libs
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.LIBWEBP_CACHE_DIR }}
+          key: libwebp-${{ env.LIBWEBP_VERSION }}-zig-${{ env.ZIG_VERSION }}-${{ matrix.goos }}-${{ env.LIBWEBP_CACHE_REV }}
       - name: Build
         # 每个目标都先用 cmake 把 libwebp 编成静态库，再以 cgo 静态链接进
         # Go 二进制。产物是单个可执行文件，不依赖系统 libwebp，Linux 产物
@@ -136,10 +149,16 @@ jobs:
           build_libwebp() {
             local name="$1" zig_target="$2" mac_arch="$3"
             local b="/tmp/libwebp-$name"
+            local cachedir="$LIBWEBP_CACHE_DIR/$name"
             rm -rf "$b"
             mkdir -p "$b"
             printf '#!/bin/sh\nexec zig cc -target %s "$@"\n' "$zig_target" > "$b/cc.sh"
             chmod +x "$b/cc.sh"
+            # 缓存命中（两个归档都在）时无需再跑 cmake。
+            if [ -f "$cachedir/libwebp.a" ] && [ -f "$cachedir/libsharpyuv.a" ]; then
+              echo "libwebp: cache hit for $name"
+              return 0
+            fi
             # macOS 主机上 CMake 会按 host 架构自动追加 -arch，与 zig 的
             # -target 冲突（x86_64 目标会被改写成 arm64），必须显式指定。
             # -U__FLT16_MANT_DIG__ 兜底 Xcode 26 的 math.h：它在 x86_64
@@ -169,6 +188,8 @@ jobs:
               -DWITH_TIFF=OFF \
               -DWITH_SIMD=0 > /dev/null
             cmake --build "$b/build" -j"$jobs" > /dev/null
+            mkdir -p "$cachedir"
+            cp "$b/build/libwebp.a" "$b/build/libsharpyuv.a" "$cachedir/"
           }
 
           build_one() {
@@ -202,9 +223,9 @@ jobs:
             mkdir -p "$dir"
             # windows/arm64 上 lld-link 不认 zig ar 写的 ARM64 归档索引，
             # 只能强制拉入整个归档（体积略增，仅此目标）。
-            local webp_ld="-L/tmp/libwebp-$name/build -lwebp -lsharpyuv -lm"
+            local webp_ld="-L$LIBWEBP_CACHE_DIR/$name -lwebp -lsharpyuv -lm"
             if [ "$name" = "windows_aarch64" ]; then
-              webp_ld="-L/tmp/libwebp-$name/build -Wl,--whole-archive -lwebp -lsharpyuv -Wl,--no-whole-archive -lm"
+              webp_ld="-L$LIBWEBP_CACHE_DIR/$name -Wl,--whole-archive -lwebp -lsharpyuv -Wl,--no-whole-archive -lm"
             fi
             local ldf="-s -w -X main.version=${version} -linkmode external"
             if [ -n "$extra_ld" ]; then
