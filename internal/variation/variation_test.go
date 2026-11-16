@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/MaikoTan/randamu/internal/metadata"
 )
 
 func writePNG(t *testing.T, path string, w, h int, at func(x, y int) color.NRGBA) {
@@ -55,6 +57,11 @@ func TestMergeVariations(t *testing.T) {
 		}
 		return base(x, y)
 	})
+	// 首页带来源信息；合并后的 APNG 应当继承它。
+	wantInfo := metadata.Info{Source: "pixiv:bookmarks", ID: 42, Page: 0, Title: "t", Author: "a"}
+	if err := metadata.Write(p0, wantInfo); err != nil {
+		t.Fatalf("seed metadata: %v", err)
+	}
 
 	finals, err := Merge(dir, 42, []string{p0, p1}, time.Second, Options{MinSimilarity: 0.9})
 	if err != nil {
@@ -83,6 +90,36 @@ func TestMergeVariations(t *testing.T) {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("page %s still exists (err = %v)", p, err)
 		}
+	}
+	got, err := metadata.Detect(final)
+	if err != nil {
+		t.Fatalf("merged file has no metadata: %v", err)
+	}
+	if got.Source != wantInfo.Source || got.ID != wantInfo.ID || got.Page != wantInfo.Page ||
+		got.Title != wantInfo.Title || got.Author != wantInfo.Author || got.URL != wantInfo.URL {
+		t.Errorf("merged metadata = %+v, want %+v", got, wantInfo)
+	}
+}
+
+// TestMergeWithoutMetadata 验证首页没有内嵌信息时合并照常进行，只是
+// 结果也不带元信息（不报错、不阻止合并）。
+func TestMergeWithoutMetadata(t *testing.T) {
+	dir := t.TempDir()
+	p0 := filepath.Join(dir, "7_p0.png")
+	p1 := filepath.Join(dir, "7_p1.png")
+	base := gradient(64, 48)
+	writePNG(t, p0, 64, 48, base)
+	writePNG(t, p1, 64, 48, func(x, y int) color.NRGBA {
+		if x >= 20 && x < 40 && y >= 16 && y < 32 {
+			return color.NRGBA{B: 255, A: 255}
+		}
+		return base(x, y)
+	})
+	if _, err := Merge(dir, 7, []string{p0, p1}, time.Second, Options{MinSimilarity: 0.9}); err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if _, err := metadata.Detect(filepath.Join(dir, "7.png")); !errors.Is(err, metadata.ErrNotFound) {
+		t.Errorf("Detect = %v, want ErrNotFound", err)
 	}
 }
 

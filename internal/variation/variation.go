@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/MaikoTan/randamu/internal/apng"
+	"github.com/MaikoTan/randamu/internal/metadata"
 )
 
 // ErrNotVariation reports that the pages are not variations of one picture:
@@ -100,6 +101,9 @@ func Merge(dir string, id int64, pages []string, delay time.Duration, opts Optio
 		if err := writeAPNG(dir, final, frames[g.start:g.end], delay); err != nil {
 			return finals, err
 		}
+		// 合并写出的 APNG 是新容器，不带任何元信息；沿用该组首页的来源
+		// 信息补写一次，否则合并后的文件在管理/检索时是“空白”的。
+		embedMergedInfo(final, pages[g.start])
 		for _, p := range pages[g.start:g.end] {
 			if err := os.Remove(p); err != nil {
 				return finals, fmt.Errorf("remove %s: %w", p, err)
@@ -177,6 +181,18 @@ func writeAPNG(dir, final string, frames []image.Image, delay time.Duration) err
 		return err
 	}
 	return nil
+}
+
+// embedMergedInfo 把首页的内嵌来源信息原样补写到合并后的 APNG 上。
+// 首页没有元信息（如关闭了 embedMeta、写入曾失败，或首页是 GIF）时
+// 静默跳过，合并结果仍按文件名保留 provenance。写元信息是尽力而为的：
+// 失败不阻止合并，与下载器的行为一致。
+func embedMergedInfo(final, firstPage string) {
+	info, err := metadata.Detect(firstPage)
+	if err != nil {
+		return
+	}
+	_ = metadata.Write(final, info)
 }
 
 // decodeFile reads one image file with the standard library decoders.
