@@ -10,181 +10,121 @@
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "1.7.3";
+        lib = pkgs.lib;
+        version = "1.7.4";
 
-        # libwebp 版本，与 internal/webp 的 dlopen 绑定要保持 ABI 兼容。
+        # libwebp 版本，与 internal/webp 的 cgo 绑定要保持 ABI 兼容。
         libwebpVersion = "1.6.0";
 
-        # 每个发行平台的 zig target 与产物文件名。Linux 固定旧 glibc 基线
-        # 保证任何现代发行版都能 dlopen；arm 用 gnueabi（soft float）以匹配
-        # Go 的 linux/arm 运行时 ABI。
-        webpTargets = {
-          linux_amd64 = {
-            zig = "x86_64-linux-gnu.2.17";
-            soname = "libwebp_linux_amd64.so";
-          };
-          linux_arm64 = {
-            zig = "aarch64-linux-gnu.2.17";
-            soname = "libwebp_linux_arm64.so";
-          };
-          linux_arm = {
-            zig = "arm-linux-gnueabi.2.17";
-            soname = "libwebp_linux_arm.so";
-          };
-          linux_386 = {
-            zig = "x86-linux-gnu.2.17";
-            soname = "libwebp_linux_386.so";
-          };
-          darwin_amd64 = {
-            zig = "x86_64-macos";
-            soname = "libwebp_macos_amd64.dylib";
-            # install_name 让加载器按 @rpath 解析同目录的 dylib。
-            extraLd = "-Wl,-install_name,@rpath/libwebp.dylib";
-          };
-          darwin_arm64 = {
-            zig = "aarch64-macos";
-            soname = "libwebp_macos_arm64.dylib";
-            extraLd = "-Wl,-install_name,@rpath/libwebp.dylib";
-          };
-          windows_amd64 = {
-            zig = "x86_64-windows-gnu";
-            soname = "libwebp_windows_amd64.dll";
-          };
-          windows_arm64 = {
-            zig = "aarch64-windows-gnu";
-            soname = "libwebp_windows_arm64.dll";
-          };
-          windows_386 = {
-            zig = "x86-windows-gnu";
-            soname = "libwebp_windows_386.dll";
-          };
-        };
+        # Linux 用 zig 交叉编译 musl 静态库并静态链接，产物在 glibc 与 musl
+        # 发行版上都能直接运行；其它平台交给系统默认编译器（macOS 的
+        # libSystem 本来就动态提供，无需 -static）。
+        zigTarget = {
+          x86_64-linux = "x86_64-linux-musl";
+          aarch64-linux = "aarch64-linux-musl";
+        }.${system} or null;
 
-        # 为每个 target 生成一条 build_one 调用，插进 buildPhase。
-        webpBuildCalls =
-          pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList
-            (name: t:
-              ''build_one "${name}" "${t.zig}" "${t.soname}" "${t.extraLd or ""}"'')
-            webpTargets);
-
-        # 用 zig 交叉编译极致精简的 libwebp，strip + gzip 后放进源码树供
-        # internal/webp 的 //go:embed 内嵌。
+        # 把 libwebp 编成静态库（libwebp.a + libsharpyuv.a）并导出头文件，
+        # 供 internal/webp 的 cgo 静态链接使用。
         #
-        # 为什么不用 nixpkgs 的 libwebp：
-        #   1. nixpkgs 的 libwebp 链接的是运行环境的 glibc，在别的 glibc 版本
-        #      下 dlopen 会因 GLIBC_ABI_DT_* 符号缺失而失败；这里固定 glibc
-        #      2.14 基线，任何现代发行版都能加载。
-        #   2. Windows 系统没有 libwebp，只能随发行版自带。
-        #   3. 只编我们调用的 5 个符号，内嵌体积从 2.5MB 的 WASM 移植降到
-        #      200-400KB。
-        webpLib = pkgs.stdenv.mkDerivation {
-          name = "randamu-libwebp-${libwebpVersion}";
-          # GitHub tarball 含一层 libwebp-<rev>/ 根目录，内置 fetchurl 不会自动
-          # 剥离，解压到 $TMPDIR/src 并 --strip-components=1 手动剥掉（见下）。
+        # 为什么自带而不是用 nixpkgs 的 libwebp：
+        #   1. nixpkgs 的是 glibc 动态库，链接后二进制依赖 nix store 的 glibc，
+        #      在非 NixOS 系统上无法直接运行；这里固定 musl 静态链接。
+        #   2. 关掉 mux/demux、外部图像解码器与全部命令行工具，只留编解码，
+        #      体积比完整 libwebp 小得多。
+        libwebp = pkgs.stdenv.mkDerivation {
+          name = "randamu-libwebp-static-${libwebpVersion}";
           src = builtins.fetchurl {
             url = "https://github.com/webmproject/libwebp/archive/v${libwebpVersion}.tar.gz";
             sha256 = "0di1izy60bzlw43xdpggw6gnzd2mx1nn7m7g4cvyxbzgng155a4k";
           };
 
-          # zig 既当编译器又当交叉 strip 工具（zig strip 支持 ELF/Mach-O/PE），
-          # 不必拉完整的 llvmPackages.llvm。
-          nativeBuildInputs = [ pkgs.cmake pkgs.zig pkgs.binutils ];
-          # CMake 调用的是编译器路径，必须让它能执行 zig 包装脚本。
+          nativeBuildInputs = [ pkgs.cmake ] ++ lib.optional (zigTarget != null) pkgs.zig;
           strictDeps = true;
           dontConfigure = true;
-          # zig 需要可写的缓存目录（默认 homeless-shelter 路径不可写）。
-          ZIG_GLOBAL_CACHE_DIR = "$TMPDIR/zig-global-cache";
-          ZIG_LOCAL_CACHE_DIR = "$TMPDIR/zig-local-cache";
 
           buildPhase = ''
             runHook preBuild
-            mkdir -p "$out"
-
-            # 每个 target：生成 zig 包装脚本 → cmake（静态）→ 编译 → 整体链接
-            # 成单个 .so/.dylib/.dll → strip → gzip 到 $out/<name>.gz。
-            #
-            # 关掉 SIMD 保证最大可移植性；关掉 mux/demux、外部图像解码器与全部
-            # 命令行工具，只留编解码。链接时只取 libwebp.a 与 libsharpyuv.a：
-            # 前者提供所有导出符号，后者以静态方式并进来（否则会多出
-            # libsharpyuv.so 这个外部依赖）。
-            # fetchurl 给的是 .tar.gz，GitHub 归档内含一层 libwebp-<rev>/，
-            # 先解压到 $TMPDIR/src 并剥掉根目录，后面所有 cmake 都在这里跑。
+            # zig 需要可写的缓存目录（默认 homeless-shelter 路径不可写）。
+            export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-global-cache"
+            export ZIG_LOCAL_CACHE_DIR="$TMPDIR/zig-local-cache"
             mkdir -p "$TMPDIR/src"
             tar -xzf "$src" -C "$TMPDIR/src" --strip-components=1
 
-            build_one() {
-              local name="$1"; local zig="$2"; local soname="$3"; local extra="$4"
-
-              cd "$TMPDIR/src"
-              local cc="$TMPDIR/cc-$name.sh"
-              cat > "$cc" <<EOF
+            # CMake 的 CMAKE_C_COMPILER 必须是一个可执行路径，用包装脚本
+            # 把 zig 的 -target 参数带进去。
+            cat > "$TMPDIR/cc.sh" <<EOF
             #!/bin/sh
-            exec zig cc -target $zig "\$@"
+            exec ${if zigTarget == null then "cc" else "zig cc -target ${zigTarget}"} "\$@"
             EOF
-              chmod +x "$cc"
+            chmod +x "$TMPDIR/cc.sh"
 
-              rm -rf build obj
-              cmake -S . -B build \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DBUILD_SHARED_LIBS=OFF \
-                -DCMAKE_C_COMPILER="$cc" \
-                -DWEBP_BUILD_ANIM_UTILS=OFF \
-                -DWEBP_BUILD_CWEBP=OFF \
-                -DWEBP_BUILD_DWEBP=OFF \
-                -DWEBP_BUILD_GIF2WEBP=OFF \
-                -DWEBP_BUILD_IMG2WEBP=OFF \
-                -DWEBP_BUILD_VWEBP=OFF \
-                -DWEBP_BUILD_WEBPINFO=OFF \
-                -DWEBP_BUILD_LIBWEBPMUX=OFF \
-                -DWEBP_BUILD_EXTRAS=OFF \
-                -DWITH_JPEG=OFF \
-                -DWITH_PNG=OFF \
-                -DWITH_TIFF=OFF \
-                -DWITH_SIMD=0 \
-                > /dev/null
-              cmake --build build -j"$NIX_BUILD_CORES" > /dev/null
+            cmake -S "$TMPDIR/src" -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_C_COMPILER="$TMPDIR/cc.sh" \
+              -DCMAKE_C_FLAGS="-ffunction-sections -fdata-sections" \
+              -DWEBP_BUILD_ANIM_UTILS=OFF \
+              -DWEBP_BUILD_CWEBP=OFF \
+              -DWEBP_BUILD_DWEBP=OFF \
+              -DWEBP_BUILD_GIF2WEBP=OFF \
+              -DWEBP_BUILD_IMG2WEBP=OFF \
+              -DWEBP_BUILD_VWEBP=OFF \
+              -DWEBP_BUILD_WEBPINFO=OFF \
+              -DWEBP_BUILD_LIBWEBPMUX=OFF \
+              -DWEBP_BUILD_EXTRAS=OFF \
+              -DWITH_JPEG=OFF \
+              -DWITH_PNG=OFF \
+              -DWITH_TIFF=OFF \
+              -DWITH_SIMD=0 > /dev/null
+            cmake --build build -j"$NIX_BUILD_CORES" > /dev/null
 
-              mkdir -p obj
-              ( cd obj && ar x ../build/libwebp.a && ar x ../build/libsharpyuv.a )
-
-              zig cc -target "$zig" -shared -o "$soname" -O2 \
-                $extra obj/*.o -lm -lc
-              # zig 0.15 没有 `zig strip` 子命令；用 LLVM objcopy（zig 自带）剥离符号。
-              zig objcopy --strip-all "$soname" "$soname.tmp" 2>/dev/null && mv "$soname.tmp" "$soname" || true
-              gzip -9 -c "$soname" > "$out/$name.gz"
-            }
-
-            ${webpBuildCalls}
-
+            mkdir -p "$out/lib" "$out/include"
+            cp build/libwebp.a build/libsharpyuv.a "$out/lib/"
+            cp -r "$TMPDIR/src/src/webp" "$out/include/"
             runHook postBuild
           '';
 
           dontInstall = true;
           meta = {
-            description = "libwebp shared libraries for randamu, all release targets";
+            description = "Static libwebp (encode/decode only) for randamu";
             license = pkgs.lib.licenses.bsd3;
           };
         };
+
+        # Go 的 cgo 需要一个可执行路径作 CC，同样用包装脚本注入 zig 目标。
+        ccWrapper = pkgs.writeShellScriptBin "randamu-cc" ''
+          exec ${if zigTarget == null then "cc" else "zig cc -target ${zigTarget}"} "$@"
+        '';
 
         randamu = (pkgs.buildGoModule {
           pname = "randamu";
           inherit version;
           src = ./.;
-          # vendor/ 目录已提交进仓库（含 purego 等依赖），buildGoModule 直接用
-          # 它构建，无需沙箱内跑 go mod vendor，也避免 vendorHash 缓存问题。
+          # 已无第三方 Go 依赖（WebP 改走 cgo），无需 vendor。
           vendorHash = null;
-          ldflags = [ "-s" "-w" "-X main.version=${version}" ];
-          env.CGO_ENABLED = "0";
-          # WebP 编解码走运行时 dlopen 内嵌库（internal/webp/lib/*.gz 由上面
-          # 的 webpLib 生成，经 postPatch 注入源码树）。purego 在 Linux 上
-          # 通过 //go:cgo_import_dynamic 链接 libdl/libc，二进制仍是单文件。
-          # 旧 gen2brain WASM 后端已移除，不再需要 nodynamic 标签。
-          postPatch = ''
-            # //go:embed 要求每个目标平台的库齐备，否则交叉编译报错。
-            # lib/ 目录为空时不会被 git 跟踪，先建目录再拷入。
-            mkdir -p internal/webp/lib
-            cp ${webpLib}/*.gz internal/webp/lib/
+
+          # ccWrapper 在构建期需要 zig 本体。
+          nativeBuildInputs = lib.optional (zigTarget != null) pkgs.zig;
+
+          env = {
+            CGO_ENABLED = "1";
+            CGO_CFLAGS = "-I${libwebp}/include";
+            CGO_LDFLAGS = "-L${libwebp}/lib -lwebp -lsharpyuv -lm";
+          };
+          # stdenv 的 setup hook 会把 CC 覆盖成 gcc，必须在 buildPhase 前
+          # 重新导出，否则静态链接找不到 musl 的 libc。zig 的缓存目录默认
+          # 在不可写的 homeless-shelter 下，也在这里重定向。
+          preBuild = ''
+            export CC="${ccWrapper}/bin/randamu-cc"
+            export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-global-cache"
+            export ZIG_LOCAL_CACHE_DIR="$TMPDIR/zig-local-cache"
           '';
+          # 保持纯 Go 的 DNS/用户解析，避免 cgo 版在静态 musl 下引入 nss 依赖。
+          tags = [ "netgo" "osusergo" ];
+          ldflags = [ "-s" "-w" "-X main.version=${version}" ]
+            ++ lib.optional (zigTarget != null) "-extldflags=-static";
+
           meta = {
             description = "Periodic image fetcher with idempotent downloads";
             homepage = "https://github.com/MaikoTan/randamu";
@@ -192,7 +132,7 @@
             mainProgram = "randamu";
           };
           # 暴露给手动调试：nix build .#randamu.libwebp
-          passthru.libwebp = webpLib;
+          passthru.libwebp = libwebp;
         });
       in
       {
@@ -209,6 +149,9 @@
             gopls
             gotools
             golangci-lint
+            # 本地 go build / go test 需要 libwebp 的头文件与库（动态链接即可）。
+            libwebp
+            pkg-config
           ];
           shellHook = ''
             # Prevent Go from trying to download a toolchain in the sandbox.

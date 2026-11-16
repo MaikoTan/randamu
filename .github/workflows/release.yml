@@ -17,6 +17,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # internal/webp 走 cgo，测试需要 libwebp 的头文件与库。
+      - name: Install libwebp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebp-dev
       - run: go test ./...
 
   build:
@@ -40,26 +43,44 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils nsis upx-ucl
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full binutils nsis upx-ucl cmake
           curl -fsSL -o /tmp/nfpm.tar.gz \
             "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
           curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/checksums.txt \
             | awk '/^.*  nfpm_2\.48\.0_Linux_x86_64\.tar\.gz$/ {print $1 "  /tmp/nfpm.tar.gz"}' | sha256sum -c -
           tar -C /usr/local/bin -xzf /tmp/nfpm.tar.gz nfpm
-      - name: Install UPX (macOS)
+      - name: Install UPX and cmake (macOS)
         if: runner.os == 'macOS'
-        run: brew install upx
-      - name: Build
-        # CGO is disabled so every binary is pure Go. WebP 编解码走 purego
-        # dlopen 内嵌的 libwebp（internal/webp/lib/*.gz 经 //go:embed 内嵌），
-        # 二进制本身仍是单文件，运行时把库解压到临时文件再 dlopen。Linux 的
-        # ELF 会声明对 libdl/libpthread/libc 的动态依赖（glibc 提供；musl 上
-        # dlopen 在 libc 内但 libdl.so.2 不存在，musl 系统需自行确认）。 Each GOOS job loops over its architectures
-        # serially: the compiler already uses every core per target, and one
-        # job per GOOS keeps the environment setup (checkout, Go toolchain,
-        # apt) to a third of what a per-architecture matrix would spend.
+        run: brew install upx cmake
+      # Linux / Windows 目标用 zig 交叉编译出 musl / mingw 的静态 libwebp；
+      # macOS 目标用 Xcode 自带的 clang（libSystem 本身动态提供，无需 -static）。
+      - name: Install zig
+        if: runner.os == 'Linux'
         env:
-          CGO_ENABLED: "0"
+          ZIG_VERSION: "0.17.0"
+          ZIG_SHA256: "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026"
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          curl -fsSL -o /tmp/zig.tar.xz "$url"
+          echo "${ZIG_SHA256}  /tmp/zig.tar.xz" | shasum -a 256 -c -
+          mkdir -p /tmp/zig
+          tar -xJf /tmp/zig.tar.xz -C /tmp/zig --strip-components=1
+          echo "/tmp/zig" >> "$GITHUB_PATH"
+      - name: Fetch libwebp source
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/libwebp.tar.gz \
+            "https://github.com/webmproject/libwebp/archive/v1.6.0.tar.gz"
+          echo "93a852c2b3efafee3723efd4636de855b46f9fe1efddd607e1f42f60fc8f2136  /tmp/libwebp.tar.gz" \
+            | shasum -a 256 -c -
+          mkdir -p /tmp/libwebp
+          tar -xzf /tmp/libwebp.tar.gz -C /tmp/libwebp --strip-components=1
+      - name: Build
+        # 每个目标都先用 cmake 把 libwebp 编成静态库，再以 cgo 静态链接进
+        # Go 二进制。产物是单个可执行文件，不依赖系统 libwebp，Linux 产物
+        # 还是完全静态的（glibc / musl 发行版通用）。
+        env:
           GOOS: ${{ matrix.goos }}
           VERSION: ${{ github.ref_name }}
         run: |
@@ -69,6 +90,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             ext=".exe"
           fi
+          jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 
           # Download and prune the tesseract installers once; both x86 and
           # x64 stages copy from these trees. A plain case instead of an
@@ -87,7 +109,7 @@ jobs:
               installer="/tmp/tesseract-$arch.exe"
               curl -fsSL -o "$installer" \
                 "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-$arch-setup-$tessver.exe"
-              echo "$hash  $installer" | sha256sum -c -
+              echo "$hash  $installer" | shasum -a 256 -c -
               # The installer is an NSIS archive; 7z extracts it without running it.
               mkdir "/tmp/tesseract-$arch"
               7z x -o"/tmp/tesseract-$arch" "$installer" > /dev/null
@@ -101,16 +123,72 @@ jobs:
             done
           fi
 
+          # 为目标平台编译静态 libwebp，并生成注入 zig/clang 参数的 CC 包装。
+          build_libwebp() {
+            local name="$1" zig_target="$2" mac_arch="$3"
+            local b="/tmp/libwebp-$name"
+            rm -rf "$b"
+            mkdir -p "$b"
+            if [ -n "$zig_target" ]; then
+              printf '#!/bin/sh\nexec zig cc -target %s "$@"\n' "$zig_target" > "$b/cc.sh"
+            else
+              printf '#!/bin/sh\nexec clang -arch %s "$@"\n' "$mac_arch" > "$b/cc.sh"
+            fi
+            chmod +x "$b/cc.sh"
+            cmake -S /tmp/libwebp -B "$b/build" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_C_COMPILER="$b/cc.sh" \
+              -DCMAKE_C_FLAGS="-ffunction-sections -fdata-sections" \
+              -DWEBP_BUILD_ANIM_UTILS=OFF \
+              -DWEBP_BUILD_CWEBP=OFF \
+              -DWEBP_BUILD_DWEBP=OFF \
+              -DWEBP_BUILD_GIF2WEBP=OFF \
+              -DWEBP_BUILD_IMG2WEBP=OFF \
+              -DWEBP_BUILD_VWEBP=OFF \
+              -DWEBP_BUILD_WEBPINFO=OFF \
+              -DWEBP_BUILD_LIBWEBPMUX=OFF \
+              -DWEBP_BUILD_EXTRAS=OFF \
+              -DWITH_JPEG=OFF \
+              -DWITH_PNG=OFF \
+              -DWITH_TIFF=OFF \
+              -DWITH_SIMD=0 > /dev/null
+            cmake --build "$b/build" -j"$jobs" > /dev/null
+          }
+
           build_one() {
             local goarch="$1" goarm="$2" name="$3" nfpm_arch="$4" tess="$5"
+            local zig_target="" mac_arch="" extra_ld="-static"
+            case "$name" in
+              linux_x86)       zig_target=x86-linux-musl ;;
+              linux_x64)       zig_target=x86_64-linux-musl ;;
+              linux_aarch64)   zig_target=aarch64-linux-musl ;;
+              linux_armv7)     zig_target=arm-linux-musleabi ;;
+              windows_x86)     zig_target=x86-windows-gnu ;;
+              windows_x64)     zig_target=x86_64-windows-gnu ;;
+              windows_aarch64) zig_target=aarch64-windows-gnu ;;
+              macos_x64)       mac_arch=x86_64; extra_ld="" ;;
+              macos_aarch64)   mac_arch=arm64;  extra_ld="" ;;
+            esac
+
+            build_libwebp "$name" "$zig_target" "$mac_arch"
+
             local dir="dist/$name"
             mkdir -p "$dir"
-            env GOARCH="$goarch" GOARM="${goarm:-}" \
-              go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+            local ldf="-s -w -X main.version=${version} -linkmode external"
+            if [ -n "$extra_ld" ]; then
+              ldf="$ldf -extldflags $extra_ld"
+            fi
+            env CGO_ENABLED=1 \
+              CC="/tmp/libwebp-$name/cc.sh" \
+              CGO_CFLAGS="-I/tmp/libwebp/src" \
+              CGO_LDFLAGS="-L/tmp/libwebp-$name/build -lwebp -lsharpyuv -lm" \
+              GOARCH="$goarch" GOARM="${goarm:-}" \
+              go build -trimpath -tags "netgo,osusergo" \
+              -ldflags "$ldf" \
               -o "$dir/randamu$ext" .
-            # UPX 压缩：linux/darwin 二进制用 --lzma --ultra-brute 压到约 40%，
-            # windows 的 .exe 同样适用。压缩后二进制仍是单文件，运行时解压到
-            # 内存，不落盘。UPX 对动态链接的 ELF/PE 同样有效。
+            # UPX 压缩：静态二进制压到约 33%。压缩后仍是单文件，运行时解压
+            # 到内存，不落盘。
             if command -v upx > /dev/null 2>&1; then
               upx --lzma --ultra-brute "$dir/randamu$ext" > /dev/null 2>&1 || true
             fi

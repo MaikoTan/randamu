@@ -19,7 +19,7 @@ This replaces the old Python/FastAPI random-wallpaper service.
   WebP XMP) so files are recognisable as randamu output
 - Reliable downloads: bounded concurrency, retries with backoff, `Range` resume for partial files
 - Optional proxy support (`http`, `https`, `socks5`)
-- Pure-Go, one self-contained binary, low memory
+- Single self-contained binary (libwebp is statically linked in), low memory
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
 - Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
@@ -27,7 +27,9 @@ This replaces the old Python/FastAPI random-wallpaper service.
 
 ## Requirements
 
-- Go 1.25+ (or Nix)
+- Go 1.25+ and a C compiler with libwebp headers (or Nix). These are only
+  needed to **build** randamu — the released binaries already contain libwebp
+  and need nothing at runtime.
 - A pixiv refresh token — **only** if you use pixiv sources; lolicon,
   konachan and danbooru need no authentication
 - Optional: a proxy if pixiv is unreachable from your network
@@ -67,14 +69,16 @@ systemd credential.
 ## Build
 
 ```bash
-nix build            # ./result/bin/randamu
-# or
-CGO_ENABLED=0 go build -trimpath -o randamu .
+nix build            # ./result/bin/randamu（Linux 上是完全静态的 musl 二进制）
+# 或，本机已装 libwebp 开发包：
+CGO_ENABLED=1 go build -trimpath -o randamu .
 ```
 
-WebP 编解码走 dlopen 内嵌的 libwebp（`internal/webp/lib/*.gz`，由 flake
-中的 `webpLib` 交叉编译生成并 `//go:embed` 进二进制），因此二进制仍是静态的，
-不需要系统 libwebp。
+WebP 编解码通过 cgo 调用 libwebp。发布产物与 `nix build` 会用 zig 把
+libwebp 编成**静态库**再链接进二进制（`flake.nix` 与 release 流水线里各
+有一份同样的交叉编译逻辑），因此二进制仍是单个可执行文件，不依赖系统
+安装的 libwebp；Linux 产物还是完全静态的，glibc 与 musl 发行版通用。
+用 `CGO_ENABLED=0` 构建也能通过，但 WebP 转换会被跳过并保留原图。
 
 ## Usage
 
