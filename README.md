@@ -23,7 +23,7 @@ This replaces the old Python/FastAPI random-wallpaper service.
 - systemd timer integration through the bundled NixOS and home-manager modules
 - Filters for ugoira, AI-generated works, R18/R18G, blacklisted tags and page count
 - Content analysis rejects non-illustration images: QR-code posters, mosaic-censored works and fully blurred paid-site teasers
-- Multi-page variations (差分) are merged into looping animated PNGs (APNG), one per variation set
+- Multi-page variations are merged into looping animated PNGs (APNG), one per variation set
 
 ## Requirements
 
@@ -69,21 +69,23 @@ systemd credential.
 ## Build
 
 ```bash
-nix build            # ./result/bin/randamu（Linux 上是完全静态的 musl 二进制）
-# 或，本机已装 libwebp 开发包：
+nix build            # ./result/bin/randamu (Linux: fully static musl binary)
+# or, with libwebp dev package installed locally:
 CGO_ENABLED=1 go build -trimpath -o randamu .
 ```
 
-WebP 编解码通过 cgo 调用 libwebp。发布产物与 `nix build` 会用 zig 把
-libwebp 编成**静态库**再链接进二进制（`flake.nix` 与 release 流水线里各
-有一份同样的交叉编译逻辑），因此二进制仍是单个可执行文件，不依赖系统
-安装的 libwebp；Linux 产物还是完全静态的，glibc 与 musl 发行版通用。
-用 `CGO_ENABLED=0` 构建也能通过，但 WebP 转换会被跳过并保留原图。
+WebP encode/decode go through cgo to libwebp. Release binaries and `nix build`
+use zig to compile libwebp as **static libraries** and link them into the binary
+(the same cross-compile logic lives in both `flake.nix` and the release
+workflow), so the binary is a single self-contained file with no system libwebp
+dependency; Linux binaries are fully static and work on both glibc and musl
+distributions. `CGO_ENABLED=0` also builds, but WebP conversion is skipped and
+original images are kept.
 
 ## Usage
 
 ```bash
-# pixiv 图源需要 token；仅用 lolicon/konachan/danbooru 时可省略
+# pixiv sources need a token; only lolicon/konachan/danbooru can be omitted
 export PIXIV_REFRESH_TOKEN="..."
 randamu --config examples/config.json
 ```
@@ -120,19 +122,19 @@ and the file overrides built-in defaults:
   "max_age_days": 0,
   "webp": true,
   "webp_quality": 85,
-  "blacklist_tags": ["漫画", "講座", "描き方", "MMD", "3D", "3Dカスタム少女"],
+  "blacklist_tags": ["comic", "lecture", "how-to-draw", "MMD", "3D", "3D custom girl"],
   "sources": [
     { "type": "bookmarks", "restrict": "public", "limit": 100 },
     { "type": "bookmarks", "restrict": "private", "limit": 100 },
     {
       "type": "search",
-      "tag": "拘束",
+      "tag": "女の子",
       "search_target": "exact_match_for_tags",
       "sort": "popular_desc",
       "limit": 100
     },
     { "type": "recommended", "limit": 100 },
-    { "type": "lolicon", "tags": ["風景"], "rating": "safe", "limit": 20 },
+    { "type": "lolicon", "tags": ["scenery"], "rating": "safe", "limit": 20 },
     { "type": "konachan", "tags": ["scenic"], "rating": "safe", "limit": 20 },
     { "type": "danbooru", "tags": ["landscape"], "rating": "safe", "limit": 20 }
   ]
@@ -196,7 +198,7 @@ illust ids are remembered in `state.json` and skipped on later runs. Analysis
 runs on the original download, before WebP conversion; undecodable formats are
 kept unchanged.
 
-### Variation merging (差分)
+### Variation merging
 
 With `merge_variations` enabled (the default), the pages of one work are
 grouped into variation sets and each set is merged into a looping APNG
